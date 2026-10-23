@@ -35,8 +35,8 @@ On the project it was built for, a FastAPI + React options-trading research app:
 
 - **Scope:** 124 modules, 22 tables, 32 routes, 21 dashboard files, 8 scheduled jobs,
   28 commands and 7 caches, generated into six files.
-- **Size:** the index is 4.7 KB against a 6 KB budget, replacing a 61 KB instruction
-  file that had been loaded in full every session.
+- **Size:** the index is 4.7 KB against a 6 KB budget. With wiring moved to the map and
+  history to a decision log, what a session reads at start fell from 61 KB to 31 KB.
 - **Every check proven to fail:** a dummy module, a rewired table, a renamed note key and
   a removed guarded argument each fail the suite, and pass again once restored.
 - **Generation found what hand-writing missed:** on its first run it listed a module
