@@ -54,6 +54,61 @@ NO_MAP_EDITS = [
 QUESTION_TOOLS = ["Read", "Grep", "Glob", "Bash"]
 CHANGE_TOOLS = ["Read", "Grep", "Glob", "Bash", "Edit", "Write"]
 
+#: Harness settings that shrink what every turn carries: only the task's tools are
+#: defined (not just permitted), the skills listing is off, and the per-session dynamic
+#: sections of the system prompt are left out. Measured: 47k -> 17k tokens of context.
+LEAN_FLAGS = [
+    "--disable-slash-commands",
+    "--exclude-dynamic-system-prompt-sections",
+    "--setting-sources",
+    "project",
+]
+
+#: Sections of the instruction file every session keeps in the slim tree. The rest move
+#: to docs/agent/, one file each, listed in the instruction file so they load on demand.
+SLIM_KEEP = ("Stack", "Rules", "Layout", "Non-goals")
+
+#: Each arm: the tree it runs in, whether the harness is lean, and a model per task kind
+#: (falling back to --model). A and B are the map benchmark; L, S and R are optimizers.
+ARMS = {
+    "A": {"tree": "nomap"},
+    "B": {"tree": "map"},
+    "L": {"tree": "map", "lean": True},
+    "S": {"tree": "slim", "lean": True},
+    "R": {
+        "tree": "slim",
+        "lean": True,
+        "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet"},
+    },
+    # Round 2. T: the smallest tool set per kind (Bash's definition alone is ~1.2k tokens).
+    "T": {"tree": "slim", "lean": True, "tools": "tight"},
+    # M: T with Claude Code's system prompt replaced by a short one (8.8k -> 4.5k context).
+    "M": {"tree": "slim", "lean": True, "tools": "tight", "system": "minimal"},
+    # H: M with the cheapest model for questions.
+    "H": {
+        "tree": "slim",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "models": {"wiring": "haiku", "trap": "haiku", "control": "haiku"},
+    },
+    # E: M at low effort, for fewer output tokens (output is priced at 5x input).
+    "E": {"tree": "slim", "lean": True, "tools": "tight", "system": "minimal", "effort": "low"},
+}
+
+TIGHT_TOOLS = {
+    "question": ["Read", "Grep", "Glob"],
+    "change": ["Read", "Grep", "Glob", "Edit", "Bash"],
+}
+
+#: Replaces Claude Code's system prompt in arms with "system": "minimal".
+MINIMAL_SYSTEM = (
+    "You are a coding agent working in this repository. Follow CLAUDE.md. Use the tools "
+    "to inspect and change files. Make independent tool calls together in one turn. Read "
+    "only what the task needs, and stop as soon as you can answer or the change is done "
+    "and verified. Do not commit. Reply concisely."
+)
+
 
 def git(args: list[str], cwd: Path) -> str:
     return subprocess.run(
@@ -61,18 +116,60 @@ def git(args: list[str], cwd: Path) -> str:
     ).stdout.strip()
 
 
-def worktree(out: Path, arm: str) -> Path:
-    return out / f"wt-{arm}"
+def worktree(out: Path, tree: str) -> Path:
+    return out / f"wt-{tree}"
 
 
-def setup(repo: Path, out: Path, commit: str) -> None:
+def slim_instructions(path: Path) -> None:
+    """Keep the instruction file's core sections; move the rest to docs/agent/."""
+    instructions = path / "CLAUDE.md"
+    text = instructions.read_text(encoding="utf-8")
+    parts = re.split(r"(?m)^(?=## )", text)
+    kept, moved = [parts[0]], []
+    folder = path / "docs" / "agent"
+    folder.mkdir(parents=True, exist_ok=True)
+    for part in parts[1:]:
+        title = part.splitlines()[0].removeprefix("## ").strip()
+        if title in SLIM_KEEP:
+            kept.append(part)
+            continue
+        slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+        (folder / f"{slug}.md").write_text(part, encoding="utf-8", newline="\n")
+        moved.append(f"- `docs/agent/{slug}.md`: {title}")
+    index = "## Read when relevant\n\n" + "\n".join(moved) + "\n"
+    slim = "".join(kept).rstrip() + "\n\n" + index
+    instructions.write_text(slim, encoding="utf-8", newline="\n")
+
+
+def commit_tree(path: Path, message: str) -> None:
+    git(["add", "-A"], path)
+    git(
+        [
+            "-c",
+            "user.name=bench",
+            "-c",
+            "user.email=bench@localhost",
+            "commit",
+            "-q",
+            "--no-verify",
+            "-m",
+            message,
+        ],
+        path,
+    )
+
+
+def setup(repo: Path, out: Path, commit: str, trees: set[str]) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    for arm in ("A", "B"):
-        path = worktree(out, arm)
+    for tree in sorted(trees):
+        path = worktree(out, tree)
         if path.exists():
             continue
         git(["worktree", "add", "--detach", str(path), commit], repo)
-        if arm == "A":
+        if tree == "slim":
+            slim_instructions(path)
+            commit_tree(path, "benchmark tree: slim instructions")
+        if tree == "nomap":
             for item in NO_MAP_PATHS:
                 git(["rm", "-r", "-q", "--ignore-unmatch", item], path)
             instructions = path / "CLAUDE.md"
@@ -105,20 +202,20 @@ def reset(path: Path) -> None:
 
 
 def cleanup(repo: Path, out: Path) -> None:
-    for arm in ("A", "B"):
-        path = worktree(out, arm)
-        if path.exists():
-            git(["worktree", "remove", "--force", str(path)], repo)
+    for path in sorted(out.glob("wt-*")):
+        git(["worktree", "remove", "--force", str(path)], repo)
 
 
-def schedule(task_ids: list[str], reps: int, seed: int) -> list[tuple[str, int, str]]:
-    """(task, rep, arm) in a seeded order, with the two arms of each pair adjacent."""
+def schedule(
+    task_ids: list[str], reps: int, seed: int, arm_names: list[str]
+) -> list[tuple[str, int, str]]:
+    """(task, rep, arm) in a seeded order, with every arm of a (task, rep) adjacent."""
     rng = random.Random(seed)
     pairs = [(t, r) for t in task_ids for r in range(reps)]
     rng.shuffle(pairs)
     order = []
     for task, rep in pairs:
-        arms = ["A", "B"]
+        arms = list(arm_names)
         rng.shuffle(arms)
         order += [(task, rep, arm) for arm in arms]
     return order
@@ -156,7 +253,11 @@ def find_transcript(session_id: str) -> Path | None:
     return None
 
 
-def run_agent(prompt: str, path: Path, tools: list[str], args, env: dict) -> dict:
+def run_agent(
+    prompt: str, path: Path, tools: list[str], args, env: dict, arm: dict, kind: str
+) -> dict:
+    if arm.get("tools") == "tight":
+        tools = TIGHT_TOOLS["change" if kind == "change" else "question"]
     # The prompt goes in on stdin: on Windows `claude` is a .cmd wrapper, and a newline in
     # an argument ends the command line there, silently dropping every flag after it.
     command = [
@@ -172,8 +273,15 @@ def run_agent(prompt: str, path: Path, tools: list[str], args, env: dict) -> dic
         "--mcp-config",
         str(args.out / "no-mcp.json"),
     ]
-    if args.model:
-        command += ["--model", args.model]
+    if arm.get("lean"):
+        command += ["--tools", *tools, *LEAN_FLAGS]
+    if arm.get("system") == "minimal":
+        command += ["--system-prompt", MINIMAL_SYSTEM]
+    if arm.get("effort"):
+        command += ["--effort", arm["effort"]]
+    model = arm.get("models", {}).get(kind) or args.model
+    if model:
+        command += ["--model", model]
     started = time.time()
     finished = subprocess.run(
         command,
@@ -228,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--python", default=None, help="Interpreter with the repo's deps.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--cleanup", action="store_true")
+    parser.add_argument("--arms", default="A,B", help="Comma-separated, from ARMS.")
     args = parser.parse_args(argv)
     args.out = args.out.resolve()
 
@@ -241,7 +350,8 @@ def main(argv: list[str] | None = None) -> int:
     reps = args.reps or (PILOT_REPS if args.pilot else FULL_REPS)
     python = args.python or str(args.repo / "venv" / "Scripts" / "python.exe")
 
-    setup(args.repo, args.out, spec["repo_commit"])
+    arm_names = args.arms.split(",")
+    setup(args.repo, args.out, spec["repo_commit"], {ARMS[a]["tree"] for a in arm_names})
     (args.out / "no-mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
     log = args.out / "runs.jsonl"
     done = set()
@@ -250,13 +360,13 @@ def main(argv: list[str] | None = None) -> int:
             row = json.loads(line)
             done.add((row["task"], row["rep"], row["arm"]))
 
-    order = schedule(ids, reps, args.seed)
+    order = schedule(ids, reps, args.seed, arm_names)
     print(f"{len(order)} runs, {len(done)} already done.", flush=True)
     for position, (task_id, rep, arm) in enumerate(order, start=1):
         if (task_id, rep, arm) in done:
             continue
         task = tasks[task_id]
-        path = worktree(args.out, arm)
+        path = worktree(args.out, ARMS[arm]["tree"])
         reset(path)
         env = {**os.environ, "PYTHONPATH": str(path / "src")}
         change = task["kind"] == "change"
@@ -264,7 +374,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             result = {"result": "", "session_id": None, "dry_run": True}
         else:
-            result = run_agent(prompt, path, CHANGE_TOOLS if change else QUESTION_TOOLS, args, env)
+            result = run_agent(
+                prompt,
+                path,
+                CHANGE_TOOLS if change else QUESTION_TOOLS,
+                args,
+                env,
+                ARMS[arm],
+                task["kind"],
+            )
         if change:
             grade = grade_change(task, path, python, env)
             touched = git(["status", "--porcelain"], path).splitlines()
@@ -277,7 +395,7 @@ def main(argv: list[str] | None = None) -> int:
             "rep": rep,
             "arm": arm,
             "order": position,
-            "model": args.model,
+            "model": ARMS[arm].get("models", {}).get(task["kind"]) or args.model,
             "models_used": sorted(result.get("modelUsage") or {}),
             "commit": spec["repo_commit"],
             "grade": grade["grade"],
