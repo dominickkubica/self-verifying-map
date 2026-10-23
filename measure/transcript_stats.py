@@ -42,7 +42,10 @@ EDIT_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 SEARCH_TOOLS = {"Grep", "Glob"}
 READ_TOOLS = {"Read"}
 #: Shell commands that are searching or reading rather than doing.
-SHELL_SEARCH = re.compile(r"(^|[|;&\s])(grep|rg|find|ls|cat|head|tail|sed -n|awk|wc|Select-String|Get-ChildItem|Get-Content)\b")
+SHELL_SEARCH = re.compile(
+    r"(^|[|;&\s])(grep|rg|find|ls|cat|head|tail|sed -n|awk|wc"
+    r"|Select-String|Get-ChildItem|Get-Content)\b"
+)
 SHELL_TOOLS = {"Bash", "PowerShell"}
 
 
@@ -102,8 +105,9 @@ def _is_prompt(entry: dict) -> bool:
     else:
         return False
     text = text.strip()
-    return bool(text) and not text.startswith(("<system-reminder>", "<task-notification>",
-                                               "<local-command", "<command-"))
+    return bool(text) and not text.startswith(
+        ("<system-reminder>", "<task-notification>", "<local-command", "<command-")
+    )
 
 
 def _when(entry: dict) -> datetime | None:
@@ -264,9 +268,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{'':58}" + "".join(f"{n:>14}" for n in names))
     for metric in tables[names[0]]:
         print(f"{metric:58}" + "".join(f"{_fmt(tables[n][metric], metric):>14}" for n in names))
-    print(
-        "\nRequests differ in kind, so a before/after gap mixes the change with the task mix."
-    )
+    print("\nRequests differ in kind, so a before/after gap mixes the change with the task mix.")
     return 0
 
 
