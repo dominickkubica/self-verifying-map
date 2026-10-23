@@ -157,10 +157,11 @@ def find_transcript(session_id: str) -> Path | None:
 
 
 def run_agent(prompt: str, path: Path, tools: list[str], args, env: dict) -> dict:
+    # The prompt goes in on stdin: on Windows `claude` is a .cmd wrapper, and a newline in
+    # an argument ends the command line there, silently dropping every flag after it.
     command = [
         args.claude,
         "-p",
-        prompt,
         "--output-format",
         "json",
         "--max-turns",
@@ -176,6 +177,7 @@ def run_agent(prompt: str, path: Path, tools: list[str], args, env: dict) -> dic
     started = time.time()
     finished = subprocess.run(
         command,
+        input=prompt,
         cwd=path,
         env=env,
         capture_output=True,
@@ -276,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
             "arm": arm,
             "order": position,
             "model": args.model,
+            "models_used": sorted(result.get("modelUsage") or {}),
             "commit": spec["repo_commit"],
             "grade": grade["grade"],
             "score": grade["score"],
