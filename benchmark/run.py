@@ -138,6 +138,17 @@ ARMS = {
         "effort": "low",
         "models": {"wiring": "haiku", "trap": "haiku", "control": "haiku"},
     },
+    # Q: P with a 5-minute prompt cache. A headless run finishes in minutes, so the
+    # default 1-hour cache write (2x input, against 1.25x) is paid for and never used.
+    "Q": {
+        "tree": "slimp",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "cache_ttl": "5m",
+        "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet", "change": "sonnet"},
+    },
 }
 
 #: The reply Claude Code gives when the account's session or usage limit is reached.
@@ -322,8 +333,87 @@ def reset(path: Path) -> None:
 
 
 def cleanup(repo: Path, out: Path) -> None:
-    for path in sorted(out.glob("wt-*")):
+    for path in sorted([*out.glob("wt-*"), *out.glob("worker-*/wt-*")]):
         git(["worktree", "remove", "--force", str(path)], repo)
+
+
+def read_rows(log: Path) -> list[dict]:
+    if not log.exists():
+        return []
+    return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+
+
+def run_key(row: dict) -> tuple[str, int, str]:
+    return (row["task"], row["rep"], row["arm"])
+
+
+def shard(order: list[tuple[str, int, str]], index: int, count: int) -> list[tuple[str, int, str]]:
+    """Worker `index` of `count`'s share of the schedule: whole (task, rep) pairs, dealt in
+    turn, so both arms of a pair still run back to back on one worker, in schedule order."""
+    pairs = list(dict.fromkeys((task, rep) for task, rep, _ in order))
+    mine = {pair for number, pair in enumerate(pairs) if number % count == index}
+    return [run for run in order if run[:2] in mine]
+
+
+def merge_worker_logs(out: Path) -> int:
+    """Append the workers' new runs to `<out>/runs.jsonl`; returns how many were added."""
+    log = out / "runs.jsonl"
+    seen = {run_key(row) for row in read_rows(log)}
+    added = []
+    for worker_log in sorted(out.glob("worker-*/runs.jsonl")):
+        for row in read_rows(worker_log):
+            if run_key(row) not in seen:
+                seen.add(run_key(row))
+                added.append(row)
+    with log.open("a", encoding="utf-8") as handle:
+        for row in added:
+            handle.write(json.dumps(row) + "\n")
+    return len(added)
+
+
+def without_options(argv: list[str], names: set[str]) -> list[str]:
+    """`argv` with the named options and their values removed."""
+    out, skip = [], False
+    for item in argv:
+        if skip:
+            skip = False
+        elif item in names:
+            skip = True
+        elif item.split("=", 1)[0] not in names:
+            out.append(item)
+    return out
+
+
+def run_workers(args, argv: list[str]) -> int:
+    """Run the schedule on `args.workers` processes, each with its own worktrees and log.
+
+    Each worker reads `<out>/runs.jsonl` for runs already done, takes every Nth pair, and
+    gets an equal share of what is left of the budget. Their runs are merged into
+    `<out>/runs.jsonl` when all have stopped; rerunning resumes.
+    """
+    args.out.mkdir(parents=True, exist_ok=True)
+    merge_worker_logs(args.out)
+    log = args.out / "runs.jsonl"
+    spent = sum(row["cost_usd"] or 0 for row in read_rows(log))
+    base = without_options(argv, {"--workers", "--out", "--budget-usd"})
+    workers = []
+    for index in range(args.workers):
+        folder = args.out / f"worker-{index}"
+        folder.mkdir(exist_ok=True)
+        command = [sys.executable, str(Path(__file__).resolve()), *base, "--out", str(folder)]
+        command += ["--shard", f"{index}/{args.workers}", "--prior-log", str(log)]
+        if args.budget_usd is not None:
+            command += ["--budget-usd", f"{(args.budget_usd - spent) / args.workers:.4f}"]
+        output = (folder / "output.txt").open("a", encoding="utf-8")
+        workers.append((index, subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)))
+    codes = {index: process.wait() for index, process in workers}
+    added = merge_worker_logs(args.out)
+    for index, code in codes.items():
+        tail = (args.out / f"worker-{index}" / "output.txt").read_text(encoding="utf-8")
+        last = tail.strip().splitlines()[-1] if tail.strip() else ""
+        print(f"worker {index}: exit {code}. {last}", flush=True)
+    print(f"{added} runs added to {log}.", flush=True)
+    return max(codes.values())
 
 
 def schedule(
@@ -339,6 +429,24 @@ def schedule(
         rng.shuffle(arms)
         order += [(task, rep, arm) for arm in arms]
     return order
+
+
+def turn_limited(result: dict, max_turns: int) -> bool:
+    """The session ended at the turn limit, not with the agent's own answer."""
+    return result.get("subtype") == "error_max_turns" or bool(
+        result.get("is_error") and (result.get("num_turns") or 0) > max_turns
+    )
+
+
+#: Cost assumed for a run of a kind no run in the log has shown yet, in dollars.
+FIRST_RUN_ESTIMATE = {"change": 4.0, "question": 0.5}
+
+
+def run_estimate(rows: list[dict], arm: str, kind: str) -> float:
+    """The most a run of this arm and kind has cost so far, or a cautious default."""
+    seen = [r["cost_usd"] or 0 for r in rows if r["arm"] == arm and r["kind"] == kind]
+    default = FIRST_RUN_ESTIMATE["change" if kind == "change" else "question"]
+    return max(seen) if seen else default
 
 
 def grade_question(task: dict, answer: str) -> dict:
@@ -402,6 +510,8 @@ def run_agent(
     model = arm.get("models", {}).get(kind) or args.model
     if model:
         command += ["--model", model]
+    if arm.get("cache_ttl"):
+        env = {**env, "CLAUDE_CODE_PROMPT_CACHE_TTL": arm["cache_ttl"]}
     started = time.time()
     finished = subprocess.run(
         command,
@@ -458,6 +568,23 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Interpreter with the repo's deps (default: the repo's venv or .venv).",
     )
+    parser.add_argument(
+        "--budget-usd",
+        type=float,
+        default=None,
+        help="Stop before a (task, repetition) pair whose runs could take the log's total "
+        "cost past this, so a usage window is not exhausted mid-run.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Run pairs on this many processes at once, each with its own worktrees. "
+        "Concurrent sessions share the provider's prompt cache, so their costs are not "
+        "comparable with sequential runs.",
+    )
+    parser.add_argument("--shard", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--prior-log", type=Path, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--cleanup", action="store_true")
     parser.add_argument("--arms", default="A,B", help="Comma-separated, from ARMS.")
@@ -468,6 +595,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cleanup:
         cleanup(args.repo, args.out)
         return 0
+    if args.workers > 1:
+        return run_workers(args, sys.argv[1:] if argv is None else argv)
 
     spec = json.loads(args.tasks.read_text(encoding="utf-8"))
     tasks = {t["id"]: t for t in spec["tasks"]}
@@ -485,18 +614,36 @@ def main(argv: list[str] | None = None) -> int:
     )
     (args.out / "no-mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
     log = args.out / "runs.jsonl"
-    done = set()
-    if log.exists():
-        for line in log.read_text(encoding="utf-8").splitlines():
-            row = json.loads(line)
-            done.add((row["task"], row["rep"], row["arm"]))
+    # A worker also reads the main log: runs done there are skipped and inform estimates,
+    # but only its own new runs count against its share of the budget.
+    prior = read_rows(args.prior_log) if args.prior_log else []
+    prior_keys = {run_key(row) for row in prior}
+    logged = prior + [row for row in read_rows(log) if run_key(row) not in prior_keys]
+    done = {run_key(row) for row in logged}
 
     order = schedule(ids, reps, args.seed, arm_names)
+    if args.shard:
+        index, count = map(int, args.shard.split("/"))
+        order = shard(order, index, count)
     print(f"{len(order)} runs, {len(done)} already done.", flush=True)
+    pair = None
     for position, (task_id, rep, arm) in enumerate(order, start=1):
         if (task_id, rep, arm) in done:
             continue
         task = tasks[task_id]
+        if args.budget_usd is not None and (task_id, rep) != pair:
+            # Check once per pair, before its first run, so a pair is never left half done.
+            pair = (task_id, rep)
+            todo = [a for t, r, a in order if (t, r) == pair and (t, r, a) not in done]
+            spent = sum(row["cost_usd"] or 0 for row in logged if run_key(row) not in prior_keys)
+            needed = sum(run_estimate(logged, a, task["kind"]) for a in todo)
+            if spent + needed > args.budget_usd:
+                print(
+                    f"Stopped before run {position}: ${spent:.2f} spent, the next pair could "
+                    f"take ${needed:.2f} more, budget ${args.budget_usd:.2f}. Rerun to resume.",
+                    flush=True,
+                )
+                return 3
         path = worktree(args.out, ARMS[arm]["tree"])
         reset(path)
         env = {**os.environ, "PYTHONPATH": str(path / "src")}
@@ -522,10 +669,13 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if change:
             grade = grade_change(task, path, python, env)
-            touched = git(["status", "--porcelain"], path).splitlines()
         else:
             grade = grade_question(task, result.get("result", ""))
-            touched = git(["status", "--porcelain"], path).splitlines()
+        touched = git(["status", "--porcelain"], path).splitlines()
+        limited = turn_limited(result, args.max_turns)
+        if limited:
+            # DESIGN.md: a run that hits the turn limit is wrong, whatever it left behind.
+            grade = {"score": 0.0, "grade": "wrong", "as_if_finished": grade["grade"]}
         row = {
             "task": task_id,
             "kind": task["kind"],
@@ -542,6 +692,8 @@ def main(argv: list[str] | None = None) -> int:
             "num_turns": result.get("num_turns"),
             "usage": result.get("usage"),
             "is_error": result.get("is_error"),
+            "turn_limited": limited,
+            "as_if_finished": grade.get("as_if_finished"),
             "wall_seconds": result.get("wall_seconds"),
             "session_id": result.get("session_id"),
             "answer": result.get("result", ""),
@@ -549,6 +701,8 @@ def main(argv: list[str] | None = None) -> int:
         }
         with log.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row) + "\n")
+        logged.append(row)
+        done.add((task_id, rep, arm))
         print(
             f"[{position}/{len(order)}] {task_id} rep {rep} arm {arm}: {grade['grade']}, "
             f"${row['cost_usd'] or 0:.3f}, {row.get('tool_calls', '-')} tools",

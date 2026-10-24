@@ -77,3 +77,56 @@ def test_the_changelog_has_notes_for_the_package_version(capsys) -> None:
 
     assert release_notes.main([f"v{__version__}"]) == 0
     assert capsys.readouterr().out.strip()  # a tag for this version would have notes
+
+
+def test_a_run_that_hits_the_turn_limit_is_turn_limited() -> None:
+    assert run.turn_limited({"subtype": "error_max_turns"}, 40)
+    assert run.turn_limited({"is_error": True, "num_turns": 41}, 40)
+    assert not run.turn_limited({"is_error": False, "num_turns": 41}, 40)
+    assert not run.turn_limited({"is_error": True, "num_turns": 3}, 40)  # another error
+
+
+def test_run_estimate_uses_the_costliest_run_seen() -> None:
+    rows = [
+        {"arm": "B", "kind": "wiring", "cost_usd": 0.3},
+        {"arm": "B", "kind": "wiring", "cost_usd": 0.4},
+        {"arm": "P", "kind": "change", "cost_usd": None},
+    ]
+    assert run.run_estimate(rows, "B", "wiring") == 0.4
+    assert run.run_estimate(rows, "B", "change") == run.FIRST_RUN_ESTIMATE["change"]
+    assert run.run_estimate(rows, "P", "trap") == run.FIRST_RUN_ESTIMATE["question"]
+    assert run.run_estimate(rows, "P", "change") == 0
+
+
+def test_shards_split_whole_pairs_and_cover_the_schedule_once() -> None:
+    order = run.schedule(["w01", "w02", "c14", "k18", "t11"], 2, 7, ["B", "P"])
+    shards = [run.shard(order, index, 3) for index in range(3)]
+    assert sorted(r for s in shards for r in s) == sorted(order)
+    for part in shards:
+        assert part == [r for r in order if r in part]  # schedule order kept
+        pairs = [r[:2] for r in part]
+        assert all(pairs.count(p) == 2 for p in pairs)  # both arms of a pair together
+    assert {r[:2] for r in shards[0]}.isdisjoint({r[:2] for r in shards[1]})
+
+
+def test_without_options() -> None:
+    argv = ["--repo", "x", "--workers", "3", "--out=o", "--budget-usd", "9", "--dry-run"]
+    assert run.without_options(argv, {"--workers", "--out", "--budget-usd"}) == [
+        "--repo",
+        "x",
+        "--dry-run",
+    ]
+
+
+def test_merge_worker_logs_adds_each_run_once(tmp_path) -> None:
+    import json
+
+    row = {"task": "w01", "rep": 0, "arm": "B", "cost_usd": 0.1}
+    (tmp_path / "runs.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    for index, rows in enumerate([[row, {**row, "arm": "P"}], [{**row, "task": "w02"}]]):
+        (tmp_path / f"worker-{index}").mkdir()
+        text = "".join(json.dumps(r) + "\n" for r in rows)
+        (tmp_path / f"worker-{index}" / "runs.jsonl").write_text(text, encoding="utf-8")
+    assert run.merge_worker_logs(tmp_path) == 2
+    assert run.merge_worker_logs(tmp_path) == 0
+    assert len(run.read_rows(tmp_path / "runs.jsonl")) == 3
