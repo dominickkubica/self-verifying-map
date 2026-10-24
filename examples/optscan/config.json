@@ -1,0 +1,5 @@
+{
+  "required_notes": ["table", "job"],
+  "budgets": {"MAP.md": 6144, "map/notes.md": 10240},
+  "extractors": [{"type": "plugin", "factory": "map_extractors:extractors"}]
+}

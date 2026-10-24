@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lean-agent-kit"
+description = "Cut AI coding-agent token costs: measure where they go, then trim what is carried."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Dominick Kubica" }]
+requires-python = ">=3.10"
+dependencies = []
+dynamic = ["version"]
+keywords = ["claude-code", "ai-agents", "tokens", "llm", "cost"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
+
+[project.urls]
+Homepage = "https://github.com/dominickkubica/self-verifying-map"
+Issues = "https://github.com/dominickkubica/self-verifying-map/issues"
+
+[project.scripts]
+lean-agents = "lean_agent_kit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["lean_agent_kit*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "lean_agent_kit.__version__" }

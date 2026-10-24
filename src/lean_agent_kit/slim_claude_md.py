@@ -5,8 +5,8 @@ paid for again on every call of every session. This keeps the sections you name,
 every other `## ` section unchanged to its own file, and lists those files at the end so
 the agent opens them when a task needs them.
 
-    python tools/slim_claude_md.py CLAUDE.md --keep "Stack,Rules,Layout"
-    python tools/slim_claude_md.py CLAUDE.md --keep Rules --to docs/agent --dry-run
+    lean-agents slim CLAUDE.md --keep "Stack,Rules,Layout"
+    lean-agents slim CLAUDE.md --keep Rules --to docs/agent --dry-run
 
 Measured on a 26.8 KB file: 2.6 KB after slimming, about 5k fewer tokens per turn, with
 every benchmark code change still passing its hidden tests.

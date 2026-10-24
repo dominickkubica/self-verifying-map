@@ -1,0 +1,4 @@
+{"openapi": "3.0.0", "paths": {
+  "/v1/orders": {"get": {"operationId": "listOrders"}, "post": {"operationId": "createOrder"}},
+  "/v1/orders/{id}": {"get": {"operationId": "getOrder"}, "parameters": []}
+}}

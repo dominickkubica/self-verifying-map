@@ -15,8 +15,8 @@ was introduced), optionally only those that touched a given path.
 
 It prints numbers only. No prompt, reply or file content is ever written out.
 
-    python measure/transcript_stats.py --split 2026-10-22T15:26:55Z --match options-scanner
-    python measure/transcript_stats.py --csv requests.csv
+    lean-agents stats --split 2026-10-22T15:26:55Z --match options-scanner
+    lean-agents stats --csv requests.csv
 
 Caveats it cannot remove, and the report repeats: requests differ in kind, so a
 before/after difference mixes the intervention with the task mix; medians resist a few
@@ -33,7 +33,7 @@ import re
 import statistics
 from collections import Counter
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_ROOT = Path.home() / ".claude" / "projects"
@@ -114,7 +114,7 @@ def _when(entry: dict) -> datetime | None:
     stamp = entry.get("timestamp")
     if not stamp:
         return None
-    return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone(UTC)
+    return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
 def _tool_kind(name: str, tool_input: dict) -> str:
@@ -258,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
 
     groups = {"all": rows}
     if args.split:
-        cut = datetime.fromisoformat(args.split.replace("Z", "+00:00")).astimezone(UTC)
+        cut = datetime.fromisoformat(args.split.replace("Z", "+00:00")).astimezone(timezone.utc)
         groups = {
             "before": [r for r in rows if r.started < cut],
             "after": [r for r in rows if r.started >= cut],

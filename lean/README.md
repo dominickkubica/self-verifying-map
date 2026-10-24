@@ -7,7 +7,7 @@ repository):
 |---|---|
 | Default | 47.0k tokens |
 | `--tools` listing only the tools the task needs, plus `--disable-slash-commands`, `--exclude-dynamic-system-prompt-sections`, `--setting-sources project` | 17.5k |
-| Instruction file slimmed (`tools/slim_claude_md.py`) | 8.8k |
+| Instruction file slimmed (`lean-agents slim`) | 8.8k |
 | Read-only questions: `--tools Read Grep Glob` | 7.5k |
 | `--system-prompt` with a short prompt (below) | 4.5k |
 
@@ -32,10 +32,10 @@ $0.01 to $0.04 against about $0.31.
 
 ## Interactive sessions
 
-- Slim `CLAUDE.md` with `tools/slim_claude_md.py`.
+- Slim `CLAUDE.md` with `lean-agents slim`.
 - Turn off connectors and plugins a project does not use: their tool definitions ride in
   every turn.
-- Add the prefetch hook (`settings.json` here, `benchmark/hooks/map_prefetch.py`) if the
+- Add the prefetch hook (`settings.json` here runs `lean-agents prefetch`) if the
   repository has a generated, verified map.
 - Start a fresh session when the topic changes: everything in context is re-read by every
-  later call; run `measure/carry_cost.py` to see the multiplier in your own sessions.
+  later call; run `lean-agents carry-cost` to see the multiplier in your own sessions.

@@ -7,8 +7,8 @@ This reads Claude Code transcripts and attributes that carry cost to sources: ea
 (and, for shell commands, the command's first word), injected attachments, the person's
 messages, and the agent's own text and tool inputs.
 
-    python measure/transcript_stats.py ...   # per request
-    python measure/carry_cost.py              # per source, across all sessions
+    lean-agents stats ...        # per request
+    lean-agents carry-cost       # per source, across all sessions
 
 Tokens are estimated as characters / 4. Numbers only; no content is printed.
 """

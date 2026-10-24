@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER);
+CREATE TABLE "audit" (at TEXT, what TEXT);

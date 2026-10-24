@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/map_prefetch.py"
+            "command": "lean-agents prefetch"
           }
         ]
       }

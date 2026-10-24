@@ -42,7 +42,7 @@ claude -p "<task>" --output-format json --model <fixed> --max-turns 40 \
   fixed by a seed;
 - change tasks reset the worktree (`git checkout -- . && git clean -fd`) before each run;
 - the session's JSON result (usage, cost, turns) and its transcript are kept per run;
-  `measure/transcript_stats.py` reads the transcripts for tool counts and orientation.
+  `transcript_stats` (`lean-agents stats`) reads the transcripts for tool counts and orientation.
 
 ## Tasks (20)
 

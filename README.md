@@ -26,16 +26,17 @@ and each token that entered context was re-read about 220 times. The fixed part 
 
 | Tool | What it does | Effect measured here |
 |---|---|---|
-| `measure/carry_cost.py` | Ranks what costs you tokens in your own Claude Code transcripts: each tool, injected content, your agent's own writes, weighted by how many later calls re-read it | Found that the agent's own whole-file writes were 32% of all carried tokens |
-| `measure/transcript_stats.py` | Per-request tokens, tool calls, searches and re-reads, with a before/after split | |
-| `tools/slim_claude_md.py` | Splits `CLAUDE.md` into a small core and sections read on demand | 26.8 KB to 2.6 KB per turn |
+| `lean-agents carry-cost` | Ranks what costs you tokens in your own Claude Code transcripts: each tool, injected content, your agent's own writes, weighted by how many later calls re-read it | Found that the agent's own whole-file writes were 32% of all carried tokens |
+| `lean-agents stats` | Per-request tokens, tool calls, searches and re-reads, with a before/after split | |
+| `lean-agents slim` | Splits `CLAUDE.md` into a small core and sections read on demand | 26.8 KB to 2.6 KB per turn |
 | `lean/` | Flags, settings and a short system prompt for lean headless and interactive agents | 47k to 4.5k tokens of context per turn |
-| `benchmark/hooks/map_prefetch.py` | A prompt hook that injects verified facts about whatever the prompt names | 5 of 7 questions answered with no tool calls, at half the cost |
-| `src/repomap.py` + `tests/test_map.py` | A self-verifying map of a codebase's wiring: facts generated from the code, notes pinned to them, checked on every commit | What makes the prefetch safe: injected facts cannot be stale |
+| `lean-agents prefetch` | A prompt hook that injects verified facts about whatever the prompt names | 5 of 7 questions answered with no tool calls, at half the cost |
+| `lean-agents map` | A self-verifying map of a codebase's wiring: facts generated from the code, notes pinned to them, checked on every commit | What makes the prefetch safe: injected facts cannot be stale |
 | `benchmark/` | Fixed tasks, isolated worktrees, interleaved configurations, frozen answers and hidden tests | Every number above |
 
-Start with `python measure/carry_cost.py`: it needs nothing but your local transcripts and
-shows where your own tokens go.
+Install from a clone with `pip install .` (Python 3.10+, no dependencies), then start
+with `lean-agents carry-cost`: it needs nothing but your local transcripts and shows where
+your own tokens go.
 
 ## The levers, in order of effect
 
@@ -62,12 +63,21 @@ commit, so it cannot drift. People write only what code cannot say, such as why 
 exists or which lookups have caused bugs, and each note is pinned to a hash of the facts
 it describes, so it is flagged the moment its wiring changes. Design: `docs/design.md`.
 
-The map's extractors (`src/repomap.py`) are specific to the stack they were built for
-(FastAPI, SQLite migrations, a React API client); the approach and the tests carry over.
+`lean-agents map generate` builds the map from `map/config.json`, and `lean-agents map check`
+fails when it disagrees with the code. Run `check` in CI or a pre-commit hook. The built-in
+extractors read source without importing it:
+
+- modules and their docstrings;
+- tables, with the code whose SQL writes and reads them;
+- HTTP routes from decorators or an OpenAPI file.
+
+Anything stack-specific is a plugin. `examples/optscan/extractors.py` is the one this map was
+built with (FastAPI routers, SQLite migrations, a React API client, a job schedule). The
+config format is documented in `src/lean_agent_kit/repomap/config.py`, and
+`tests/fixtures/maprepo/` is a small working example.
 
 ## Roadmap
 
-- A pip-installable package with pluggable extractors for other stacks.
 - The full benchmark (20 tasks, 5 repetitions) on the lean setup against the default.
 - A multi-agent benchmark: shared stable prefixes, least tools per role, model per role.
 

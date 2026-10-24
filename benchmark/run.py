@@ -31,7 +31,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "measure"))
+sys.path.insert(0, str(HERE.parent / "src" / "lean_agent_kit"))
 
 import transcript_stats  # noqa: E402
 
@@ -237,7 +237,7 @@ def install_hooks(path: Path, python: str) -> None:
     """The prefetch hook on every prompt, and a map regeneration when the agent stops."""
     hooks = path / ".claude" / "hooks"
     hooks.mkdir(parents=True, exist_ok=True)
-    shutil.copy(HERE / "hooks" / "map_prefetch.py", hooks / "map_prefetch.py")
+    shutil.copy(HERE.parent / "src" / "lean_agent_kit" / "map_prefetch.py", hooks / "map_prefetch.py")
     interpreter = Path(python).as_posix()
     settings = {
         "hooks": {

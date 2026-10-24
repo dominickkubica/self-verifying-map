@@ -78,8 +78,9 @@ conflict in a generated file is resolved by regenerating it, never by hand.
 
 ### The generator
 
-`optscan map generate` (`src/optscan/repomap.py`) reads each fact from its source of
-truth:
+`optscan map generate` reads each fact from its source of truth. In the kit, the core
+(items, hashes, notes, checks, Markdown) is `lean_agent_kit.repomap`, and the extractors
+for this app are a plugin, `examples/optscan/extractors.py`:
 
 | Fact | Source of truth | How |
 |---|---|---|

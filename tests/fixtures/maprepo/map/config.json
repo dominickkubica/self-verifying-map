@@ -1,0 +1,9 @@
+{
+  "required_notes": ["table"],
+  "extractors": [
+    {"type": "modules", "source": "src/shop"},
+    {"type": "sql", "source": "src/shop", "schema": "*.sql", "gap_budget": 1},
+    {"type": "routes", "source": "src/shop", "package": "shop"},
+    {"type": "routes", "name": "public-api", "spec": "openapi.json"}
+  ]
+}

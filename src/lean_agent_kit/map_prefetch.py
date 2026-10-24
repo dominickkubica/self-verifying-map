@@ -9,10 +9,11 @@ would otherwise have searched for.
 It is only safe because the map is generated from the code and checked on every commit:
 prefetching hand-written documentation would inject whatever had gone stale.
 
-Standard library only, so it runs under any Python. Configure in `.claude/settings.json`:
+Standard library only, so it also runs as a copied file under any Python. Configure in
+`.claude/settings.json`:
 
     {"hooks": {"UserPromptSubmit": [{"hooks": [
-        {"type": "command", "command": "python benchmark/hooks/map_prefetch.py"}]}]}}
+        {"type": "command", "command": "lean-agents prefetch"}]}]}}
 """
 
 from __future__ import annotations
@@ -82,7 +83,7 @@ def note_blocks(names: set[str]) -> list[str]:
     return hits
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     try:
         prompt = json.load(sys.stdin).get("prompt", "")
     except (json.JSONDecodeError, AttributeError):
