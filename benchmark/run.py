@@ -94,7 +94,36 @@ ARMS = {
     },
     # E: M at low effort, for fewer output tokens (output is priced at 5x input).
     "E": {"tree": "slim", "lean": True, "tools": "tight", "system": "minimal", "effort": "low"},
+    # Iteration 2: E's low effort with a cheaper model for questions.
+    "ES": {
+        "tree": "slim",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet"},
+    },
+    # Sonnet at low effort for everything, code changes included.
+    "ESC": {
+        "tree": "slim",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet", "change": "sonnet"},
+    },
+    "EH": {
+        "tree": "slim",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "models": {"wiring": "haiku", "trap": "haiku", "control": "haiku"},
+    },
 }
+
+#: The reply Claude Code gives when the account's session or usage limit is reached.
+LIMIT_ERROR = re.compile(r"(session|usage|rate) limit", re.I)
 
 TIGHT_TOOLS = {
     "question": ["Read", "Grep", "Glob"],
@@ -337,6 +366,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--cleanup", action="store_true")
     parser.add_argument("--arms", default="A,B", help="Comma-separated, from ARMS.")
+    parser.add_argument("--only", default=None, help="Comma-separated task ids, for iterating.")
     args = parser.parse_args(argv)
     args.out = args.out.resolve()
 
@@ -346,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
 
     spec = json.loads(args.tasks.read_text(encoding="utf-8"))
     tasks = {t["id"]: t for t in spec["tasks"]}
-    ids = PILOT if args.pilot else list(tasks)
+    ids = args.only.split(",") if args.only else PILOT if args.pilot else list(tasks)
     reps = args.reps or (PILOT_REPS if args.pilot else FULL_REPS)
     python = args.python or str(args.repo / "venv" / "Scripts" / "python.exe")
 
@@ -383,6 +413,12 @@ def main(argv: list[str] | None = None) -> int:
                 ARMS[arm],
                 task["kind"],
             )
+        if result.get("is_error") and LIMIT_ERROR.search(result.get("result") or ""):
+            # Not the agent's answer: the account hit a usage limit. Recording it would
+            # count an infrastructure stop as a wrong answer, so stop and resume later.
+            reset(path)
+            print(f"Stopped at run {position}: {result.get('result')}", flush=True)
+            return 2
         if change:
             grade = grade_change(task, path, python, env)
             touched = git(["status", "--porcelain"], path).splitlines()

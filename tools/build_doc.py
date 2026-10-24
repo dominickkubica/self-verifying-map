@@ -151,7 +151,9 @@ def main(argv: list[str]) -> int:
     )
     target = REPO / "dist" / f"{source.stem}.pdf"
     target.parent.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory() as folder:
+    # Edge can still hold its profile open as the block ends; a leftover temp folder is
+    # harmless, a crash after the PDF is written is not.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
         page_path = Path(folder) / f"{source.stem}.html"
         page_path.write_text(page, encoding="utf-8")
         subprocess.run(

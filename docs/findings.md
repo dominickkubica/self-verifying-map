@@ -15,8 +15,11 @@ every tool it could use, and the project's instruction file), not the work itsel
 kinds of change reduce cost: giving the agent a reliable map of the codebase so it takes
 fewer turns, and shrinking the fixed context each turn carries. In pilot runs, the map
 cuts wiring questions by about 20%, and trimming the fixed context cuts questions by about
-two thirds and code changes by about a third, with every answer still correct. A larger,
-pre-registered benchmark is set up to confirm or correct these numbers.
+two thirds and code changes by about a third. Stacking a tighter tool set, a short system
+prompt, low reasoning effort and a mid-sized model reaches about 90% to 96% below the
+default on questions and about 90% on the one code change with a measured baseline, with
+every answer correct and every code change passing its hidden test. These are small
+samples; a larger, pre-registered benchmark is set up to confirm or correct them.
 
 ## The cost model
 
@@ -77,17 +80,35 @@ the map current; whether harder changes recover that cost is part of the full be
 
 ## Finding 3: trimming fixed context saves more than the map
 
-Optimizer pilot, early runs, all correct, measured against the map configuration:
+Optimizer round 1 (22 runs, every answer correct), median cost against the map
+configuration:
 
-| Configuration | Wiring question | Code change |
+| Configuration | Wiring questions | Control question | Code change |
+|---|---|---|---|
+| Lean harness (only needed tools; listing and dynamic sections off) | −26% | −36% | −15% |
+| + slim instruction file | −65% | −70% | −32% |
+| + a smaller model (Sonnet) for questions | −78% | −88% | −38% |
+
+Ten further runs stopped at the account's session limit before the agent answered; they
+are excluded and published separately, and the runner now halts on a limit instead of
+recording it.
+
+## Finding 4: stacking levers reaches about 90%
+
+Iterations at one run per task (32 runs, every answer correct, every code change passing
+its hidden test), stacking a tighter tool set, a short custom system prompt and a low
+reasoning-effort setting on the slim configuration:
+
+| Configuration | Cost per question | Cost per code change |
 |---|---|---|
-| Lean harness (only needed tools; listing and dynamic sections off) | −35% | −15% |
-| + slim instruction file | −63% | −32% |
-| + a smaller model for questions | −68% | (large model kept for changes) |
+| Map configuration (default agent) | about $0.31 | $1.80 to $2.20 |
+| Slim, tight tools, minimal prompt, low effort (Opus) | $0.05 to $0.12 | $0.47 |
+| The same on Sonnet | **$0.01 to $0.04** | **$0.09 to $0.43** across four changes |
 
-These are single runs per configuration at the time of writing; the round completes at 32
-runs, and a second round tests the tightest tool set, a minimal system prompt, the smallest
-model for questions, and a low reasoning-effort setting.
+Questions on Sonnet at low effort answer in one to three tool calls. Haiku is cheapest
+when it goes straight to the answer but wanders on some questions (45 tool calls on one),
+so it is not recommended. Only one of the four code changes has a measured default-agent
+baseline so far; the others are compared in the full benchmark.
 
 ## Implications for agent swarms
 
@@ -121,7 +142,7 @@ Each lever multiplies by the number of agents, and swarms add their own:
 
 ## Next steps
 
-1. Complete optimizer rounds 1 and 2, then combine the configurations that keep accuracy.
+1. Measure default-agent baselines for the remaining code changes, and repeat the best configuration to check its variance.
 2. Run the full benchmark (20 tasks, 5 repetitions) on the best configuration against the
    default.
 3. Test pre-loaded briefs, where the relevant map rows go into the prompt so a question
