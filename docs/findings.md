@@ -17,8 +17,9 @@ fewer turns, and shrinking the fixed context each turn carries. In pilot runs, t
 cuts wiring questions by about 20%, and trimming the fixed context cuts questions by about
 two thirds and code changes by about a third. Stacking a tighter tool set, a short system
 prompt, low reasoning effort and a mid-sized model reaches about 90% to 96% below the
-default on questions and about 90% on the one code change with a measured baseline, with
-every answer correct and every code change passing its hidden test. These are small
+default on questions and 88% to 96% on four code changes, with every answer correct and
+every code change passing its hidden test. A prompt hook that injects verified map facts
+halves the cost of questions again when the prompt names what it asks about. These are small
 samples; a larger, pre-registered benchmark is set up to confirm or correct them.
 
 ## The cost model
@@ -101,14 +102,60 @@ reasoning-effort setting on the slim configuration:
 
 | Configuration | Cost per question | Cost per code change |
 |---|---|---|
-| Map configuration (default agent) | about $0.31 | $1.80 to $2.20 |
+| Map configuration (default agent) | about $0.31 | $1.80 to $3.57 |
 | Slim, tight tools, minimal prompt, low effort (Opus) | $0.05 to $0.12 | $0.47 |
-| The same on Sonnet | **$0.01 to $0.04** | **$0.09 to $0.43** across four changes |
+| The same on Sonnet | **$0.01 to $0.04** | **$0.09 to $0.43** |
 
-Questions on Sonnet at low effort answer in one to three tool calls. Haiku is cheapest
-when it goes straight to the answer but wanders on some questions (45 tool calls on one),
-so it is not recommended. Only one of the four code changes has a measured default-agent
-baseline so far; the others are compared in the full benchmark.
+Per code change, default agent against the lean Sonnet configuration:
+
+| Change | Default | Lean | Saving |
+|---|---|---|---|
+| Add a CLI option | $1.80 to $2.20 | $0.21 | about 90% |
+| Add an API query parameter | $2.66 | $0.19 | 93% |
+| Add a scheduled job | $3.57 | $0.43 | 88% |
+| Change CLI output | $2.05 | $0.09 | 96% |
+
+Questions on Sonnet at low effort answer in one to three tool calls, and a repeat of every
+question landed within a few cents of the first run. Haiku is cheapest when it goes
+straight to the answer but wanders on some questions (45 tool calls on one), so it is not
+recommended.
+
+## Finding 5: prefetching verified facts removes the lookup
+
+A prompt hook reads the names in a prompt (tables, routes, modules, jobs, functions) and
+injects the matching rows and notes from the generated map, capped at about 600 tokens.
+The injected text already contains the full answer for 8 of the 10 wiring questions. In
+a run against the lean Sonnet configuration:
+
+| | Prefetch | Lean Sonnet |
+|---|---|---|
+| Median cost per question | $0.011 | $0.021 |
+| Questions answered with no tool calls | 5 of 7 | 0 of 7 |
+| Correct | 7 of 7 | 6 of 7 |
+
+When the prompt names nothing the map knows, prefetch adds little and saves nothing.
+Prefetch is safe only because the map is generated and checked against the code; injecting
+hand-written documentation would inject whatever had gone stale.
+
+## Finding 6: in long sessions, what stays in context dominates
+
+Across 14 development sessions on this codebase (about 2.5 billion context tokens, about
+$1,775 at API prices), 98% of tokens were cache re-reads, and each token entering context
+was re-read about 220 times before the session compacted. Ranked by tokens carried:
+
+| Source | Share |
+|---|---|
+| The agent's own tool inputs (whole-file writes, large scripts, document payloads) | 32% |
+| System prompt and tool definitions | 12% |
+| Whole-file reads (read, `sed -n`, `cat`) | 12% |
+| Change notices after formatter or shell edits | 6% |
+| Browser screenshots and pages | 5% |
+| The agent's replies | 4% |
+| Test and script output | 3% |
+
+The working habits that follow: small edits rather than rewrites, search then read line
+ranges, page text before screenshots, targeted tests with short tracebacks, and a fresh
+session when the topic changes.
 
 ## Implications for agent swarms
 
@@ -142,9 +189,8 @@ Each lever multiplies by the number of agents, and swarms add their own:
 
 ## Next steps
 
-1. Measure default-agent baselines for the remaining code changes, and repeat the best configuration to check its variance.
-2. Run the full benchmark (20 tasks, 5 repetitions) on the best configuration against the
-   default.
-3. Test pre-loaded briefs, where the relevant map rows go into the prompt so a question
-   needs little or no exploration.
-4. Repeat on a second repository, and on a multi-agent setup.
+1. Run the full benchmark (20 tasks, 5 repetitions) on the lean configuration with
+   prefetch against the default.
+2. Package the toolkit (measurement, slimming, lean settings, prefetch) for other
+   repositories, with extractors for more stacks.
+3. Repeat on a second repository, and on a multi-agent setup.

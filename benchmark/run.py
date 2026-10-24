@@ -112,6 +112,24 @@ ARMS = {
         "effort": "low",
         "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet", "change": "sonnet"},
     },
+    # Iteration 5, all against ESC: grep-first map rule (G), and prefetch + self-regenerating
+    # map (P).
+    "G": {
+        "tree": "slimg",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet", "change": "sonnet"},
+    },
+    "P": {
+        "tree": "slimp",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet", "change": "sonnet"},
+    },
     "EH": {
         "tree": "slim",
         "lean": True,
@@ -188,16 +206,78 @@ def commit_tree(path: Path, message: str) -> None:
     )
 
 
-def setup(repo: Path, out: Path, commit: str, trees: set[str]) -> None:
+MAP_RULE = r"\*\*Read `MAP\.md` before tracing anything\.\*\*.*?enforce all of it\.\n\n"
+GREP_RULE = (
+    "**Wiring facts are in `map/generated/` (one row per module, table, route, cache, view, "
+    "job and command) and `map/notes.md` (why, and known traps). Grep them for a name "
+    "instead of reading whole files; `MAP.md` is only the overview.** After a wiring change, "
+    "run `optscan map generate`; if `optscan map check` reports a stale note, re-read it, "
+    "fix it, then `optscan map stamp <key>`.\n\n"
+)
+PREFETCH_RULE = (
+    "**Facts from the generated wiring map about what your prompt names are added to your "
+    "context automatically; they are checked against the code, so trust them.** For anything "
+    "else, Grep `map/generated/` and `map/notes.md` for a name rather than reading whole "
+    "files. The map regenerates itself when you finish; if `optscan map check` reports a "
+    "stale note after a change, re-read it, fix it, then `optscan map stamp <key>`.\n\n"
+)
+
+
+def replace_map_rule(path: Path, rule: str) -> None:
+    instructions = path / "CLAUDE.md"
+    text, count = re.subn(
+        MAP_RULE, lambda _: rule, instructions.read_text(encoding="utf-8"), count=1, flags=re.S
+    )
+    if count != 1:
+        raise SystemExit("the map rule in CLAUDE.md did not match")
+    instructions.write_text(text, encoding="utf-8", newline="\n")
+
+
+def install_hooks(path: Path, python: str) -> None:
+    """The prefetch hook on every prompt, and a map regeneration when the agent stops."""
+    hooks = path / ".claude" / "hooks"
+    hooks.mkdir(parents=True, exist_ok=True)
+    shutil.copy(HERE / "hooks" / "map_prefetch.py", hooks / "map_prefetch.py")
+    interpreter = Path(python).as_posix()
+    settings = {
+        "hooks": {
+            "UserPromptSubmit": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": f'"{interpreter}" .claude/hooks/map_prefetch.py',
+                        }
+                    ]
+                }
+            ],
+            "Stop": [
+                {
+                    "hooks": [
+                        {"type": "command", "command": f'"{interpreter}" -m optscan map generate'}
+                    ]
+                }
+            ],
+        }
+    }
+    (path / ".claude" / "settings.json").write_text(json.dumps(settings, indent=2), "utf-8")
+
+
+def setup(repo: Path, out: Path, commit: str, trees: set[str], python: str = "python") -> None:
     out.mkdir(parents=True, exist_ok=True)
     for tree in sorted(trees):
         path = worktree(out, tree)
         if path.exists():
             continue
         git(["worktree", "add", "--detach", str(path), commit], repo)
-        if tree == "slim":
+        if tree in ("slim", "slimg", "slimp"):
             slim_instructions(path)
-            commit_tree(path, "benchmark tree: slim instructions")
+            if tree == "slimg":
+                replace_map_rule(path, GREP_RULE)
+            if tree == "slimp":
+                replace_map_rule(path, PREFETCH_RULE)
+                install_hooks(path, python)
+            commit_tree(path, f"benchmark tree: {tree}")
         if tree == "nomap":
             for item in NO_MAP_PATHS:
                 git(["rm", "-r", "-q", "--ignore-unmatch", item], path)
@@ -381,7 +461,13 @@ def main(argv: list[str] | None = None) -> int:
     python = args.python or str(args.repo / "venv" / "Scripts" / "python.exe")
 
     arm_names = args.arms.split(",")
-    setup(args.repo, args.out, spec["repo_commit"], {ARMS[a]["tree"] for a in arm_names})
+    setup(
+        args.repo,
+        args.out,
+        spec["repo_commit"],
+        {ARMS[a]["tree"] for a in arm_names},
+        args.python or str(args.repo / "venv" / "Scripts" / "python.exe"),
+    )
     (args.out / "no-mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
     log = args.out / "runs.jsonl"
     done = set()

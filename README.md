@@ -1,79 +1,75 @@
-# Self-verifying project map
+# Lean agents: cut Claude Code costs ~90% without losing accuracy
 
-A map of a codebase's wiring that cannot drift from the code. The facts (what each module
-does, which code writes and reads each table, what each API route reaches, which screen
-calls which route, what runs on a schedule) are **generated from the code** and checked
-against it on every commit. People write only what code cannot say about itself, such as
-why a table exists or which lookups have caused bugs, and each of those notes is **pinned
-to a hash of the facts it describes**, so it is flagged for review the moment its wiring
-changes.
+Measured on a real 124-module Python and React codebase: the same questions and code
+changes, answered correctly and passing the same hidden tests, at about a tenth of the
+cost of the default agent.
 
-Built for a codebase developed mostly through an AI coding assistant, which starts every
-session with no memory of the system. A map it can trust replaces re-deriving the wiring
-from source each session, which costs time and tokens and is where wrong guesses become
-bugs.
+| Task | Default agent | Lean setup | Saving |
+|---|---|---|---|
+| Wiring questions | ~$0.31 | $0.01 to $0.04 | 90 to 96% |
+| Code change: new API parameter | $2.66 | $0.19 | 93% |
+| Code change: new scheduled job | $3.57 | $0.43 | 88% |
+| Code change: CLI output | $2.05 | $0.09 | 96% |
 
-![How the map works](docs/map-overview.svg)
+Every run, every number and the pre-registered design are in `benchmark/`. Sample sizes are
+small (one or two runs per task per setup so far); the results say so wherever they appear.
 
-## How it works
+## Why agents are expensive
 
-| Part | What it does |
-|---|---|
-| Generator (`src/repomap.py`) | Reads each fact from its source of truth: the source tree, the database migrations, the SQL in string literals, the web framework's routers, the frontend's API client, the job scheduler and the CLI. Writes one Markdown file per section, sorted and deterministic. |
-| Notes (`examples/notes.md`) | One note per table and scheduled job, plus traps. Each is pinned with `fact: <hash>` of its item's generated facts, or `test: <file>::<name>` for a trap guarded by a test. |
-| Index (`examples/MAP.md`) | A short file read at the start of every session: the rules, a system diagram, and which file answers which question. Everything else is opened on demand. |
-| Checks (`tests/test_map.py`) | Fail when a generated file differs from the code, a table or job has no note, a note names something that no longer exists, a note's wiring changed since it was last read, a hand-written file names a path that does not exist, or the hand-written files exceed their size budget. |
-| Traps as tests (`tests/test_traps.py`) | Lookups that caused real bugs, written as assertions, for example "every call to the scorer states its IV-history input" and "a study refuses to run on a fraction of its symbols". |
+An agent re-reads its whole context on every turn: system prompt, every tool definition,
+the project's instruction file, and everything it has read or written so far. In 14
+long development sessions on this codebase, **98% of 2.5 billion tokens were re-reads**,
+and each token that entered context was re-read about 220 times. The fixed part alone was
+47,000 tokens per turn before the agent did any work.
 
-The hash covers an item's **wiring, not its file**: a new writer or a dropped reader flags
-the note, an unrelated edit to the same file does not. That keeps reviews rare enough that
-nobody learns to re-stamp without reading.
+## The toolkit
 
-## In use
+| Tool | What it does | Effect measured here |
+|---|---|---|
+| `measure/carry_cost.py` | Ranks what costs you tokens in your own Claude Code transcripts: each tool, injected content, your agent's own writes, weighted by how many later calls re-read it | Found that the agent's own whole-file writes were 32% of all carried tokens |
+| `measure/transcript_stats.py` | Per-request tokens, tool calls, searches and re-reads, with a before/after split | |
+| `tools/slim_claude_md.py` | Splits `CLAUDE.md` into a small core and sections read on demand | 26.8 KB to 2.6 KB per turn |
+| `lean/` | Flags, settings and a short system prompt for lean headless and interactive agents | 47k to 4.5k tokens of context per turn |
+| `benchmark/hooks/map_prefetch.py` | A prompt hook that injects verified facts about whatever the prompt names | 5 of 7 questions answered with no tool calls, at half the cost |
+| `src/repomap.py` + `tests/test_map.py` | A self-verifying map of a codebase's wiring: facts generated from the code, notes pinned to them, checked on every commit | What makes the prefetch safe: injected facts cannot be stale |
+| `benchmark/` | Fixed tasks, isolated worktrees, interleaved configurations, frozen answers and hidden tests | Every number above |
 
-On the project it was built for, a FastAPI + React options-trading research app:
+Start with `python measure/carry_cost.py`: it needs nothing but your local transcripts and
+shows where your own tokens go.
 
-- **Scope:** 124 modules, 22 tables, 32 routes, 21 dashboard files, 8 scheduled jobs,
-  28 commands and 7 caches, generated into six files.
-- **Size:** the index is 4.7 KB against a 6 KB budget. With wiring moved to the map and
-  history to a decision log, what a session reads at start fell from 61 KB to 31 KB.
-- **Every check proven to fail:** a dummy module, a rewired table, a renamed note key and
-  a removed guarded argument each fail the suite, and pass again once restored.
-- **Generation found what hand-writing missed:** on its first run it listed a module
-  reading a table the hand-written map omitted, migration code writing two tables, and an
-  API route that no screen calls.
-- **Enforcement:** a pre-commit hook runs the map checks on every commit (including
-  frontend-only commits), and CI runs them with the full suite (2,000+ tests) on push.
+## The levers, in order of effect
 
-## What is in this repository
+1. **Context per turn.** Define only the tools a task needs, drop the skills listing and
+   dynamic prompt sections, slim the instruction file, and use a short system prompt for
+   headless agents: 47k to 4.5k tokens on every turn.
+2. **Model and effort per task.** Sonnet at low effort answered every question and passed
+   every code change in the benchmark. Haiku was cheapest when it went straight to the
+   answer but wandered on some questions (45 tool calls on one), so it is not recommended.
+3. **Turns.** A verified map turns searches into a lookup, and the prefetch hook removes
+   the lookup when the prompt names what it is asking about.
+4. **What stays in context.** Small edits instead of rewrites, search before reading,
+   page text before screenshots, targeted tests with short tracebacks, and a fresh
+   session per topic.
 
-| Path | Contents |
-|---|---|
-| `src/repomap.py` | the generator, notes parser and stamping |
-| `tests/` | the map checks and the trap tests |
-| `examples/` | the index, a sample of the notes, and trimmed generated files |
-| `examples/ci/` | the pre-commit and CI configuration |
-| `docs/design.md` | the design document: goals, design, checks, measurement, alternatives, risks |
+Details and measurements: `benchmark/OPTIMIZATION.md`. A write-up of the findings:
+`docs/findings.md`.
 
-This is a case study: the code runs inside the project it was built for and imports that
-project's settings, routers and scheduler. The extractors (`_modules`, `_storage`,
-`_routes`, `_dashboard`, `_schedule`, `_commands`) are the stack-specific part; the
-approach carries over to any codebase.
+## The self-verifying map
 
-## Adopting the approach
+The map is generated from the code (modules, tables with the code that writes and reads
+them, routes and what they reach, caches, views, jobs, commands) and checked on every
+commit, so it cannot drift. People write only what code cannot say, such as why a table
+exists or which lookups have caused bugs, and each note is pinned to a hash of the facts
+it describes, so it is flagged the moment its wiring changes. Design: `docs/design.md`.
 
-1. List the questions readers arrive with and the source of truth that answers each.
-2. Write an extractor per source of truth; keep the output deterministic.
-3. Split the map into a short index, generated files read on demand, and pinned notes.
-4. Test for drift, both directions, freshness, size and unresolved extraction.
-5. Turn every trap that can be a test into one, and point its note at the test.
-6. Prove each check fails before trusting it.
-7. Run the checks on every commit and in CI.
+The map's extractors (`src/repomap.py`) are specific to the stack they were built for
+(FastAPI, SQLite migrations, a React API client); the approach and the tests carry over.
 
 ## Roadmap
 
-A reusable package with pluggable extractors, so the generator can be pointed at any
-repository without editing it.
+- A pip-installable package with pluggable extractors for other stacks.
+- The full benchmark (20 tasks, 5 repetitions) on the lean setup against the default.
+- A multi-agent benchmark: shared stable prefixes, least tools per role, model per role.
 
 ## License
 
