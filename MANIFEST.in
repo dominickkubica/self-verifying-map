@@ -1,0 +1,3 @@
+include CHANGELOG.md CONTRIBUTING.md
+recursive-include tests *
+global-exclude __pycache__ *.py[cod]

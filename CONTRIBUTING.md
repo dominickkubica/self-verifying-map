@@ -55,6 +55,15 @@ They cost real usage. Iterate with one repetition and `--only` on a few tasks, a
 only to confirm. A new result goes in `benchmark/results/` as the raw `runs.jsonl` lines,
 with `docs/results.md` updated from them.
 
+## Releasing
+
+Versions follow semantic versioning. To release `X.Y.Z`: set `__version__` in
+`src/lean_agent_kit/__init__.py`, move the `Unreleased` notes in `CHANGELOG.md` under
+`## [X.Y.Z] - <date>`, commit, and push a tag `vX.Y.Z`. `.github/workflows/release.yml`
+checks that the tag, the version and the changelog agree, runs the tests, builds, publishes
+to PyPI through trusted publishing (no token in the repository), and creates the GitHub
+release with that changelog section as its notes.
+
 ## Sharing a measurement
 
 The "Measurement" issue template asks for `lean-agents carry-cost` or `stats` output from

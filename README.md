@@ -1,7 +1,7 @@
 # Lean agents: cut Claude Code costs ~90% without losing accuracy
 
 [![CI](https://github.com/dominickkubica/self-verifying-map/actions/workflows/ci.yml/badge.svg)](https://github.com/dominickkubica/self-verifying-map/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/dominickkubica/self-verifying-map/blob/main/LICENSE)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 
 Measured on a real 124-module Python and React codebase: the same questions and code

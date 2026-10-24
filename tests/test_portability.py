@@ -8,9 +8,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
+if not (ROOT / "tools" / "build_doc.py").exists():  # an sdist ships the package only
+    pytest.skip("repository scripts are not in this checkout", allow_module_level=True)
 sys.path[:0] = [str(ROOT / "tools"), str(ROOT / "benchmark")]
 
 import build_doc  # noqa: E402
+import release_notes  # noqa: E402
 import run  # noqa: E402
 
 
@@ -56,3 +59,21 @@ def test_the_benchmark_finds_the_repo_interpreter_on_any_platform(tmp_path, layo
 def test_the_benchmark_asks_for_an_interpreter_when_there_is_no_venv(tmp_path) -> None:
     with pytest.raises(SystemExit, match="pass --python"):
         run.repo_interpreter(tmp_path)
+
+
+def test_release_notes_are_the_versions_section() -> None:
+    changelog = (
+        "# Changelog\n\n## [Unreleased]\n\n## [0.2.0] - 2026-11-01\n\n- Two.\n\n"
+        "## [0.1.0] - 2026-10-24\n\n- One.\n\n[0.1.0]: https://example.com\n"
+    )
+    assert release_notes.notes(changelog, "0.2.0") == "- Two.\n"
+    assert release_notes.notes(changelog, "0.1.0") == "- One.\n"
+    assert release_notes.notes(changelog, "Unreleased") is None  # empty
+    assert release_notes.notes(changelog, "0.3.0") is None
+
+
+def test_the_changelog_has_notes_for_the_package_version(capsys) -> None:
+    from lean_agent_kit import __version__
+
+    assert release_notes.main([f"v{__version__}"]) == 0
+    assert capsys.readouterr().out.strip()  # a tag for this version would have notes

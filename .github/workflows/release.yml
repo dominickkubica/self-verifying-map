@@ -1,0 +1,71 @@
+name: Release
+
+# Push a tag `vX.Y.Z` matching `__version__` and a `## [X.Y.Z]` section in CHANGELOG.md.
+# PyPI accepts the upload through trusted publishing (no token in the repository): the
+# project's publisher on PyPI names this repository, this workflow and the `pypi`
+# environment.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Tag, version and changelog agree
+        run: |
+          version=$(python -c "import sys; sys.path.insert(0, 'src'); import lean_agent_kit; print(lean_agent_kit.__version__)")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match __version__ $version"; exit 1
+          fi
+          python tools/release_notes.py "$version" > /dev/null
+      - run: python -m pip install build twine pytest
+      - run: python -m pytest
+      - run: python -m build
+      - run: python -m twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/lean-agent-kit
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create the release with the changelog's notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python tools/release_notes.py "$GITHUB_REF_NAME" > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file notes.md
