@@ -27,7 +27,9 @@ class ModulesExtractor(Extractor):
 
     def __init__(self, source: Path, label: str | None = None) -> None:
         self.source = source
-        self.intro = f"Every module under `{label or source.as_posix()}`, with its docstring's first line."
+        self.intro = (
+            f"Every module under `{label or source.as_posix()}`, with its docstring's first line."
+        )
 
     def items(self) -> list[Item]:
         out = []
@@ -102,7 +104,9 @@ class SqlExtractor(Extractor):
         return out
 
     def gaps(self) -> dict[str, list[str]]:
-        return {"SQL the scanner could not resolve (a table name built at run time)": self.unresolved}
+        return {
+            "SQL the scanner could not resolve (a table name built at run time)": self.unresolved
+        }
 
 
 HTTP_METHODS = ("get", "post", "put", "patch", "delete", "head", "options")
@@ -153,14 +157,18 @@ class RoutesExtractor(Extractor):
             try:
                 import yaml  # optional: the kit has no dependencies
             except ImportError as error:
-                raise SystemExit("reading a YAML spec needs PyYAML; use JSON or install it") from error
+                raise SystemExit(
+                    "reading a YAML spec needs PyYAML; use JSON or install it"
+                ) from error
             spec = yaml.safe_load(text)
         else:
             spec = json.loads(text)
         out = []
         for path, operations in sorted(spec.get("paths", {}).items()):
             methods = sorted(m.upper() for m in operations if m in HTTP_METHODS)
-            ids = sorted(op.get("operationId", "") for m, op in operations.items() if m in HTTP_METHODS)
+            ids = sorted(
+                op.get("operationId", "") for m, op in operations.items() if m in HTTP_METHODS
+            )
             ids = [i for i in ids if i]
             row = [f"`{path}`", " ".join(methods), ", ".join(f"`{i}`" for i in ids) or "-"]
             out.append(Item(f"route:{path}", [*methods, *ids], row))
@@ -177,13 +185,17 @@ class RoutesExtractor(Extractor):
                 and isinstance(node.targets[0], ast.Name)
             ):
                 for keyword in node.value.keywords:
-                    if keyword.arg in ("prefix", "url_prefix") and isinstance(keyword.value, ast.Constant):
+                    if keyword.arg in ("prefix", "url_prefix") and isinstance(
+                        keyword.value, ast.Constant
+                    ):
                         prefixes[node.targets[0].id] = str(keyword.value.value)
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             for decorator in node.decorator_list:
-                if not (isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute)):
+                if not (
+                    isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute)
+                ):
                     continue
                 verb = decorator.func.attr
                 if verb not in HTTP_METHODS and verb not in self.route_decorators:
@@ -196,9 +208,13 @@ class RoutesExtractor(Extractor):
                     continue
                 methods = {verb.upper()} if verb in HTTP_METHODS else {"GET"}
                 for keyword in decorator.keywords:
-                    if keyword.arg == "methods" and isinstance(keyword.value, (ast.List, ast.Tuple, ast.Set)):
+                    if keyword.arg == "methods" and isinstance(
+                        keyword.value, (ast.List, ast.Tuple, ast.Set)
+                    ):
                         methods = {
-                            str(e.value).upper() for e in keyword.value.elts if isinstance(e, ast.Constant)
+                            str(e.value).upper()
+                            for e in keyword.value.elts
+                            if isinstance(e, ast.Constant)
                         }
                 owner = decorator.func.value
                 prefix = prefixes.get(owner.id, "") if isinstance(owner, ast.Name) else ""
@@ -213,7 +229,9 @@ class RoutesExtractor(Extractor):
                 entry = routes.setdefault(route, {"methods": set(), "where": set(), "uses": set()})
                 entry["methods"] |= methods
                 entry["where"].add((file, handler))
-                entry["uses"] |= self.imports.reach(tree, handler) if handler in _top_level(tree) else set()
+                entry["uses"] |= (
+                    self.imports.reach(tree, handler) if handler in _top_level(tree) else set()
+                )
         out = []
         for route in sorted(routes):
             entry = routes[route]

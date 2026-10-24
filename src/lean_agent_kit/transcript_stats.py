@@ -32,7 +32,7 @@ import json
 import re
 import statistics
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -249,8 +249,8 @@ def main(argv: list[str] | None = None) -> int:
         rows = [r for r in rows if r.edits]
     if args.csv:
         with args.csv.open("w", newline="", encoding="utf-8") as handle:
-            fields = [k for k in asdict(rows[0]) if k != "tool_names"] + ["context_tokens"]
-            writer = csv.DictWriter(handle, fieldnames=fields)
+            names = [f.name for f in fields(Request) if f.name != "tool_names"]
+            writer = csv.DictWriter(handle, fieldnames=[*names, "context_tokens"])
             writer.writeheader()
             for r in rows:
                 data = {k: v for k, v in asdict(r).items() if k != "tool_names"}

@@ -13,7 +13,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from optscan.config import REPO_ROOT
 
 SOURCES = [REPO_ROOT / "src" / "optscan", REPO_ROOT / "scripts"]

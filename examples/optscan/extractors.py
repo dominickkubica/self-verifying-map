@@ -25,15 +25,15 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
-from fastapi.routing import APIRoute
-
 import optscan.api.routers as routers_package
-from lean_agent_kit.repomap import Extractor, Item, ModulesExtractor, SqlExtractor
-from lean_agent_kit.repomap.core import table
-from lean_agent_kit.repomap.pysource import Imports, group_calls
+from fastapi.routing import APIRoute
 from optscan.config import REPO_ROOT, Settings
 from optscan.jobs.schedule import jobs
 from optscan.storage import db
+
+from lean_agent_kit.repomap import Extractor, Item, ModulesExtractor, SqlExtractor
+from lean_agent_kit.repomap.core import table
+from lean_agent_kit.repomap.pysource import Imports, group_calls
 
 SRC = REPO_ROOT / "src" / "optscan"
 FRONTEND = REPO_ROOT / "frontend" / "src"
@@ -453,7 +453,9 @@ class Commands(Extractor):
                             for alias in node.names:
                                 path = IMPORTS.module_path(f"{node.module}.{alias.name}")
                                 modules.add(path or IMPORTS.module_path(node.module) or node.module)
-                    elif isinstance(node, ast.Name) and node.id in functions and node.id not in seen:
+                    elif (
+                        isinstance(node, ast.Name) and node.id in functions and node.id not in seen
+                    ):
                         seen.add(node.id)
                         queue.append(node.id)
             found = sorted(modules)

@@ -28,7 +28,13 @@ def slim(text: str, keep: set[str]) -> tuple[str, dict[str, str]]:
         if title in keep:
             kept.append(part)
         else:
-            moved[re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")] = part
+            slug = base = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "section"
+            # Two titles can slug alike ("C++" and "C"); never let one overwrite the other.
+            number = 1
+            while slug in moved:
+                number += 1
+                slug = f"{base}-{number}"
+            moved[slug] = part
     return "".join(kept).rstrip() + "\n", moved
 
 

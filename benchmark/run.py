@@ -237,7 +237,9 @@ def install_hooks(path: Path, python: str) -> None:
     """The prefetch hook on every prompt, and a map regeneration when the agent stops."""
     hooks = path / ".claude" / "hooks"
     hooks.mkdir(parents=True, exist_ok=True)
-    shutil.copy(HERE.parent / "src" / "lean_agent_kit" / "map_prefetch.py", hooks / "map_prefetch.py")
+    shutil.copy(
+        HERE.parent / "src" / "lean_agent_kit" / "map_prefetch.py", hooks / "map_prefetch.py"
+    )
     interpreter = Path(python).as_posix()
     settings = {
         "hooks": {

@@ -144,8 +144,7 @@ def stale_files(repo_map: RepoMap, generated: Path) -> list[str]:
     stale = [
         name
         for name, text in repo_map.files.items()
-        if not (generated / name).exists()
-        or (generated / name).read_text(encoding="utf-8") != text
+        if not (generated / name).exists() or (generated / name).read_text(encoding="utf-8") != text
     ]
     stray = [p.name for p in generated.glob("*.md") if p.name not in repo_map.files]
     return sorted(stale + stray)
@@ -197,7 +196,9 @@ def load_notes(text: str) -> list[Note]:
     return notes
 
 
-def stamp(text: str, keys: list[str], repo_map: RepoMap, *, every: bool = False) -> tuple[str, list[str]]:
+def stamp(
+    text: str, keys: list[str], repo_map: RepoMap, *, every: bool = False
+) -> tuple[str, list[str]]:
     """Set the fact hash of the named notes (or all) to the current one: (new text, keys)."""
     stamped = []
     for note in load_notes(text):

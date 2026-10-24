@@ -37,7 +37,8 @@ MIN_NAME = 3
 def candidates(prompt: str) -> set[str]:
     """Words in the prompt that could name a map item."""
     found = set(IDENTIFIER.findall(prompt))
-    # Anything the prompt puts in backticks was named on purpose, however short.
+    # Anything the prompt puts in backticks was named on purpose: a short plain word
+    # counts, though nothing under MIN_NAME does.
     quoted = {w for q in re.findall(r"`([^`]+)`", prompt) for w in [q, *q.split()]}
     plain = {f for f in found if not f.isalpha() or len(f) >= PLAIN_WORD_MIN}
     return {f for f in plain | quoted if len(f) >= MIN_NAME}

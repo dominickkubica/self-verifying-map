@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import re
 
+from optscan.config import REPO_ROOT, Settings
+
 from lean_agent_kit.repomap import generate
 from lean_agent_kit.repomap.cli import check
 from lean_agent_kit.repomap.config import MapConfig
-from optscan.config import REPO_ROOT, Settings
 
 CONFIG = MapConfig.load(REPO_ROOT)
 

@@ -25,7 +25,10 @@ Public at github.com/dominickkubica/self-verifying-map. Owner: Dominick. MIT.
 - `benchmark/`: `run.py` (arms, worktrees, grading), `analyze.py`, `tasks.json`,
   `hidden_tests/`, `results/` (raw runs), `DESIGN.md`,
   `OPTIMIZATION.md`.
-- `tests/fixtures/maprepo/`: a small repo with a map that passes `lean-agents map check`.
+- `tests/`: `python -m pytest` (config in `pyproject.toml`); synthetic transcripts from
+  `tests/transcripts.py`, never real ones. `tests/fixtures/maprepo/` is a small repo whose
+  map passes `lean-agents map check`. Lint: `ruff check . && ruff format --check .`.
+  CI: `.github/workflows/ci.yml` (Linux, macOS, Windows; Python 3.10 to 3.13).
 - `examples/optscan/`: the options-scanner repo's map plugin and its map tests
   (`C:\Users\kubic\options-scanner`); they import that app and run only there.
   `examples/generated/`, `MAP.md`, `notes.md`: that map's output.

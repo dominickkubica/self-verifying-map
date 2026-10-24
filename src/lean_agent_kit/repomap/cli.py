@@ -23,10 +23,14 @@ def check(config: MapConfig) -> list[str]:
     failures = []
     stale = core.stale_files(repo_map, config.generated)
     if stale:
-        failures.append(f"map/generated is out of date: {', '.join(stale)} (run `lean-agents map generate`)")
+        failures.append(
+            f"map/generated is out of date: {', '.join(stale)} (run `lean-agents map generate`)"
+        )
     for heading, lines in repo_map.gaps.items():
         failures.append(f"{heading}: {len(lines)} over budget: " + "; ".join(lines))
-    notes = core.load_notes(config.notes.read_text(encoding="utf-8")) if config.notes.exists() else []
+    notes = (
+        core.load_notes(config.notes.read_text(encoding="utf-8")) if config.notes.exists() else []
+    )
     advice = {
         "missing": "items with no note in map/notes.md",
         "dead": "notes for items that no longer exist",
@@ -74,7 +78,9 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.keys or args.all):
         parser.error("stamp needs note keys or --all")
     repo_map = core.generate(config.extractors())
-    text, stamped = core.stamp(config.notes.read_text(encoding="utf-8"), args.keys, repo_map, every=args.all)
+    text, stamped = core.stamp(
+        config.notes.read_text(encoding="utf-8"), args.keys, repo_map, every=args.all
+    )
     config.notes.write_text(text, encoding="utf-8", newline="\n")
     print("\n".join(f"stamped {key}" for key in stamped) or "nothing to stamp")
     return 0

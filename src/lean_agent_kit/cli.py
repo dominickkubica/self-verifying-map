@@ -1,10 +1,10 @@
 """The `lean-agents` command: one entry point for each tool in the kit.
 
-    lean-agents carry-cost [...]   # what costs tokens in your transcripts, per source
-    lean-agents stats [...]        # per-request tokens, tool calls and re-reads
-    lean-agents slim CLAUDE.md     # split an instruction file into a core and sections
-    lean-agents prefetch           # the UserPromptSubmit hook (reads the prompt on stdin)
-    lean-agents map check          # the self-verifying map: generate, check, stamp
+lean-agents carry-cost [...]   # what costs tokens in your transcripts, per source
+lean-agents stats [...]        # per-request tokens, tool calls and re-reads
+lean-agents slim CLAUDE.md     # split an instruction file into a core and sections
+lean-agents prefetch           # the UserPromptSubmit hook (reads the prompt on stdin)
+lean-agents map check          # the self-verifying map: generate, check, stamp
 """
 
 from __future__ import annotations
@@ -14,7 +14,10 @@ import sys
 from . import __version__
 
 COMMANDS = {
-    "carry-cost": ("carry_cost", "Rank what costs tokens in your transcripts, weighted by re-reads"),
+    "carry-cost": (
+        "carry_cost",
+        "Rank what costs tokens in your transcripts, weighted by re-reads",
+    ),
     "stats": ("transcript_stats", "Per-request tokens, tool calls, searches and re-reads"),
     "slim": ("slim_claude_md", "Split CLAUDE.md into a small core and sections read on demand"),
     "prefetch": ("map_prefetch", "UserPromptSubmit hook: inject map facts the prompt names"),
