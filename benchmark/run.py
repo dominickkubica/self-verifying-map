@@ -1,6 +1,6 @@
 """Run the map benchmark: fixed tasks, two arms, repeated, interleaved, graded blind.
 
-    python benchmark/run.py --repo C:/path/to/options-scanner --out bench-out --pilot
+    python benchmark/run.py --repo ~/src/options-scanner --out bench-out --pilot
     python benchmark/run.py --repo ... --out bench-out            # the full 200 runs
     python benchmark/run.py --repo ... --out bench-out --dry-run  # plumbing only, no agent
     python benchmark/run.py --repo ... --out bench-out --cleanup  # remove the worktrees
@@ -233,6 +233,15 @@ def replace_map_rule(path: Path, rule: str) -> None:
     instructions.write_text(text, encoding="utf-8", newline="\n")
 
 
+def repo_interpreter(repo: Path) -> str:
+    """The Python in the repository's own virtual environment, on any platform."""
+    for folder in ("venv", ".venv"):
+        for interpreter in ("Scripts/python.exe", "bin/python"):
+            if (repo / folder / interpreter).exists():
+                return str(repo / folder / interpreter)
+    raise SystemExit(f"no venv or .venv in {repo}; pass --python with the repo's interpreter")
+
+
 def install_hooks(path: Path, python: str) -> None:
     """The prefetch hook on every prompt, and a map regeneration when the agent stops."""
     hooks = path / ".claude" / "hooks"
@@ -444,7 +453,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-turns", type=int, default=40)
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--claude", default=shutil.which("claude") or "claude")
-    parser.add_argument("--python", default=None, help="Interpreter with the repo's deps.")
+    parser.add_argument(
+        "--python",
+        default=None,
+        help="Interpreter with the repo's deps (default: the repo's venv or .venv).",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--cleanup", action="store_true")
     parser.add_argument("--arms", default="A,B", help="Comma-separated, from ARMS.")
@@ -460,7 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     tasks = {t["id"]: t for t in spec["tasks"]}
     ids = args.only.split(",") if args.only else PILOT if args.pilot else list(tasks)
     reps = args.reps or (PILOT_REPS if args.pilot else FULL_REPS)
-    python = args.python or str(args.repo / "venv" / "Scripts" / "python.exe")
+    python = args.python or repo_interpreter(args.repo)
 
     arm_names = args.arms.split(",")
     setup(
@@ -468,7 +481,7 @@ def main(argv: list[str] | None = None) -> int:
         args.out,
         spec["repo_commit"],
         {ARMS[a]["tree"] for a in arm_names},
-        args.python or str(args.repo / "venv" / "Scripts" / "python.exe"),
+        python,
     )
     (args.out / "no-mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
     log = args.out / "runs.jsonl"

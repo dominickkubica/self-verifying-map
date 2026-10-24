@@ -1,28 +1,45 @@
 """Build a PDF from a Markdown document in docs/, so the Markdown stays the source.
 
-    venv\\Scripts\\python.exe scripts\\build_doc.py docs\\design\\project-map.md
-    -> dist\\project-map.pdf
+    python tools/build_doc.py docs/findings.md            # -> dist/findings.pdf
+    python tools/build_doc.py docs/findings.md --html     # -> dist/findings.html, no browser
+    python tools/build_doc.py docs/findings.md --browser /usr/bin/chromium
 
+Optional: the Markdown is the document, and nothing else in the repository needs this.
 The PDF is a build output, never edited and never committed: change the Markdown and
 rebuild. Converts the subset of Markdown the docs use (headings, paragraphs, tables,
 lists, fenced code, images, inline code, bold, italic) without a dependency, then prints
-the page with headless Edge, which every Windows machine here has.
+the page with any headless Chromium browser it finds (Edge, Chrome or Chromium).
 """
 
 from __future__ import annotations
 
+import argparse
 import html
 import re
+import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-EDGE_PATHS = [
+#: Browsers that print to PDF headlessly, by command name and by usual install path.
+BROWSER_COMMANDS = [
+    "msedge",
+    "microsoft-edge",
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium",
+    "chromium-browser",
+    "chrome",
+]
+BROWSER_PATHS = [
     Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
     Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+    Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+    Path("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+    Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+    Path("/Applications/Chromium.app/Contents/MacOS/Chromium"),
 ]
 
 CSS = """
@@ -134,43 +151,62 @@ def to_html(markdown: str, base: Path) -> str:
     return "\n".join(out)
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        print(__doc__)
-        return 2
-    source = (REPO / argv[0]).resolve() if not Path(argv[0]).is_absolute() else Path(argv[0])
-    edge = next((path for path in EDGE_PATHS if path.exists()), None)
-    if edge is None:
-        print("Microsoft Edge not found; it prints the PDF.")
-        return 1
+def find_browser() -> str | None:
+    for command in BROWSER_COMMANDS:
+        if found := shutil.which(command):
+            return found
+    return next((str(path) for path in BROWSER_PATHS if path.exists()), None)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("source", type=Path, help="Markdown file, relative to the repo root")
+    parser.add_argument("--html", action="store_true", help="Write the HTML page; no PDF.")
+    parser.add_argument("--browser", help="A Chromium-based browser to print with.")
+    args = parser.parse_args(argv)
+    source = args.source if args.source.is_absolute() else (REPO / args.source).resolve()
     body = to_html(source.read_text(encoding="utf-8"), source.parent)
     title = html.escape(source.stem)
     page = (
         f"<!doctype html><html><head><meta charset='utf-8'><title>{title}</title>"
         f"<style>{CSS}</style></head><body>{body}</body></html>"
     )
+    (REPO / "dist").mkdir(exist_ok=True)
+    if args.html:
+        target = REPO / "dist" / f"{source.stem}.html"
+        target.write_text(page, encoding="utf-8")
+        print(f"Built {target.relative_to(REPO)}; print it to PDF from any browser.")
+        return 0
+    browser = args.browser or find_browser()
+    if browser is None:
+        print("No Edge, Chrome or Chromium found to print the PDF. Pass --browser, or --html.")
+        return 1
     target = REPO / "dist" / f"{source.stem}.pdf"
-    target.parent.mkdir(exist_ok=True)
-    # Edge can still hold its profile open as the block ends; a leftover temp folder is
-    # harmless, a crash after the PDF is written is not.
+    target.unlink(missing_ok=True)  # else a PDF from an earlier build passes for this one
+    # The browser can still hold its profile open as the block ends; a leftover temp
+    # folder is harmless, a crash after the PDF is written is not.
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
         page_path = Path(folder) / f"{source.stem}.html"
         page_path.write_text(page, encoding="utf-8")
-        subprocess.run(
-            [
-                str(edge),
-                # The old headless mode exits 0 without writing anything.
-                "--headless=new",
-                "--disable-gpu",
-                "--no-pdf-header-footer",
-                f"--user-data-dir={Path(folder) / 'profile'}",
-                f"--print-to-pdf={target}",
-                page_path.as_uri(),
-            ],
-            check=True,
-            capture_output=True,
-            timeout=120,
-        )
+        try:
+            subprocess.run(
+                [
+                    browser,
+                    # The old headless mode exits 0 without writing anything.
+                    "--headless=new",
+                    "--disable-gpu",
+                    "--no-pdf-header-footer",
+                    f"--user-data-dir={Path(folder) / 'profile'}",
+                    f"--print-to-pdf={target}",
+                    page_path.as_uri(),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=120,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            print(f"Could not run {browser}: {error}")
+            return 1
         # Edge's launcher returns before its renderer has written the file, and leaving
         # this block deletes the page it is still printing.
         deadline = time.monotonic() + 60
@@ -178,11 +214,11 @@ def main(argv: list[str]) -> int:
             time.sleep(0.5)
         time.sleep(1)
     if not target.exists():
-        print("Edge did not write the PDF.")
+        print(f"{Path(browser).name} did not write the PDF.")
         return 1
     print(f"Built {target.relative_to(REPO)} from {source.relative_to(REPO)}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main())

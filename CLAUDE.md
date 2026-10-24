@@ -20,7 +20,8 @@ Public at github.com/dominickkubica/self-verifying-map. Owner: Dominick. MIT.
   (split an instruction file), `map_prefetch.py` (the prompt hook), `cli.py`, and
   `repomap/` (the self-verifying map: `core.py`, generic `extractors.py`, `config.py` for
   `map/config.json`, `cli.py` for `lean-agents map`). Standard library only, Python 3.10+.
-- `tools/`: `build_doc.py` (Markdown to PDF via headless Edge).
+- `tools/`: `build_doc.py` (Markdown to PDF via any headless Chromium browser; `--html`
+  needs none). Optional: the Markdown is the document.
 - `lean/`: flags, `settings.json` and the short system prompt for lean agents.
 - `benchmark/`: `run.py` (arms, worktrees, grading), `analyze.py`, `tasks.json`,
   `hidden_tests/`, `results/` (raw runs), `DESIGN.md`,
