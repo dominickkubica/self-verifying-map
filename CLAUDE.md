@@ -8,7 +8,7 @@ Public at github.com/dominickkubica/self-verifying-map. Owner: Dominick. MIT.
   script in the kit (`lean-agents carry-cost`, `lean-agents stats`). No estimates presented
   as measurements; small samples say so.
 - Documents describe the present only: no "v1/v2", no change history. History goes in
-  commit messages.
+  commit messages and `CHANGELOG.md`.
 - Edit with small targeted edits; search, then read line ranges; run only relevant tests.
 - Commit and push only when asked. End commit messages with the attribution line.
 - Benchmark runs cost real usage: one repetition while iterating, more only to confirm.
@@ -33,8 +33,10 @@ Public at github.com/dominickkubica/self-verifying-map. Owner: Dominick. MIT.
 - `examples/optscan/`: the options-scanner repo's map plugin and its map tests
   (`C:\Users\kubic\options-scanner`); they import that app and run only there.
   `examples/generated/`, `MAP.md`, `notes.md`: that map's output.
-- `docs/`: `findings.md` (the write-up), `design.md` (the map's design doc), `measuring.md`
-  (using `lean-agents stats`).
+- `docs/`: `findings.md` (the write-up), `results.md` (every benchmark run, with sample
+  sizes), `benchmark.md` (how the benchmark works), `design.md` (the map's design doc),
+  `measuring.md` (using `lean-agents stats`).
+- `CONTRIBUTING.md`, `CHANGELOG.md`, `.github/ISSUE_TEMPLATE/`.
 
 ## Read when relevant
 - `docs/production-brief.md`: what "production-worthy" means for this repo, and the work

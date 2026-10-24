@@ -1,0 +1,29 @@
+name: Measurement
+description: Share what lean-agents carry-cost or stats shows on your own setup.
+labels: [measurement]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Both commands print numbers and tool names only, never message content. Check the
+        output before posting anyway, and do not attach transcripts.
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: Agent and version, model, and what kind of work the sessions were.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The command you ran and its output.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: What you changed, if anything
+      description: Settings you applied, and a before/after split if you have one.

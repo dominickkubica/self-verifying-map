@@ -1,0 +1,34 @@
+name: Bug report
+description: Something in the kit does not work as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran, what you expected, and what you got.
+      placeholder: lean-agents map check fails with ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: >
+        The error or output, as text. Do not paste transcripts, prompts or answers from
+        your sessions.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `lean-agents --version`
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and Python
+      placeholder: macOS 15, Python 3.12
+    validations:
+      required: true

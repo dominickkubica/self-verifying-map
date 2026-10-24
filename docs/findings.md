@@ -72,7 +72,7 @@ Pilot benchmark: 4 tasks, 2 configurations, 2 repetitions, 16 runs, all correct.
 | Task type | Cost with map vs without | Tool calls | Searches |
 |---|---|---|---|
 | Wiring questions | −20% | −28% | −56% |
-| Control question (map should not help) | no difference | no difference | no difference |
+| Control question (map should not help) | +4% | no difference | no difference |
 | Code change | +4% | +11% | +26% |
 
 The control behaving as expected supports the wiring saving coming from the map. On the
@@ -106,7 +106,8 @@ reasoning-effort setting on the slim configuration:
 | Slim, tight tools, minimal prompt, low effort (Opus) | $0.05 to $0.12 | $0.47 |
 | The same on Sonnet | **$0.01 to $0.04** | **$0.09 to $0.43** |
 
-Per code change, default agent against the lean Sonnet configuration:
+Per code change, default agent against the lean Sonnet configuration (first lean run;
+`docs/results.md` has the second run of each, which moves each saving by a few points):
 
 | Change | Default | Lean | Saving |
 |---|---|---|---|
@@ -183,6 +184,9 @@ Each lever multiplies by the number of agents, and swarms add their own:
 
 - Pilot sizes: two to four tasks per round and one or two repetitions per configuration.
   Intervals are not yet meaningful.
+- Six default-agent code-change runs stopped at the 40-turn limit with their hidden test
+  passing; the runner graded them correct, where the pre-registered design counts them as
+  wrong. Their costs are floors. Every lean run finished within the limit.
 - One codebase and one model family.
 - A custom system prompt removes the default's guidance; its effect on accuracy is measured
   before it is recommended.
@@ -191,6 +195,4 @@ Each lever multiplies by the number of agents, and swarms add their own:
 
 1. Run the full benchmark (20 tasks, 5 repetitions) on the lean configuration with
    prefetch against the default.
-2. Package the toolkit (measurement, slimming, lean settings, prefetch) for other
-   repositories, with extractors for more stacks.
-3. Repeat on a second repository, and on a multi-agent setup.
+2. Repeat on a second repository, and on a multi-agent setup.

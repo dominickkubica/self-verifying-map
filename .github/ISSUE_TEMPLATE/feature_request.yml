@@ -1,0 +1,16 @@
+name: Feature or extractor request
+description: A tool, an option, or an extractor for another stack.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The task, and where the kit falls short today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+      description: For an extractor, the stack and where its facts live in the code.

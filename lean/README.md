@@ -26,9 +26,10 @@ Code changes: the same with `--tools Read Grep Glob Edit Bash` (and matching
 `--allowedTools`). Pass the prompt on stdin: on Windows `claude` is a `.cmd` wrapper and a
 newline inside an argument silently drops every flag after it.
 
-Measured on a four-change benchmark: $0.09 to $0.43 per change at this setting against
-$2.05 to $3.57 for the default agent, every change passing its hidden tests; questions at
-$0.01 to $0.04 against about $0.31.
+Measured on a four-change benchmark, two runs per change: $0.08 to $0.43 per change at
+this setting against $1.80 to $3.57 for the default agent (one run each; two of the four
+stopped at the 40-turn limit), every lean change passing its hidden test; questions at
+$0.01 to $0.04 against about $0.31. Every run: `docs/results.md`.
 
 ## Interactive sessions
 
