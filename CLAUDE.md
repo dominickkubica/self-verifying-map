@@ -10,7 +10,7 @@ Public at github.com/dominickkubica/self-verifying-map. Owner: Dominick. MIT.
 - Documents describe the present only: no "v1/v2", no change history. History goes in
   commit messages and `CHANGELOG.md`.
 - Edit with small targeted edits; search, then read line ranges; run only relevant tests.
-- Commit and push only when asked. End commit messages with the attribution line.
+- Commit and push only when asked.
 - Benchmark runs cost real usage: one repetition while iterating, more only to confirm.
 
 ## Layout
