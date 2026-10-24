@@ -10,7 +10,8 @@ messages, and the agent's own text and tool inputs.
     lean-agents stats ...        # per request
     lean-agents carry-cost       # per source, across all sessions
 
-Tokens are estimated as characters / 4. Numbers only; no content is printed.
+Tokens are estimated as characters / 4. No message content is printed: sources are labelled
+by tool name, attachment type, or the program a shell command runs, and nothing else.
 """
 
 from __future__ import annotations
@@ -38,19 +39,53 @@ def _text(value) -> str:
     return ""
 
 
+#: The only text this report takes from a transcript is a label: a tool name, an attachment
+#: type, or the program a shell command runs. A label must look like a name; anything else
+#: (a path, a value, a sentence) prints as "?", so no message content reaches the output.
+_NAME = re.compile(r"[A-Za-z][\w.+-]{0,39}")
+#: Programs a command may name by path (`venv/bin/python`) and still be reported by name.
+#: Any other program given as a path is a local script, and its name is the agent's own.
+_KNOWN_BY_PATH = set(
+    "bash sh zsh pwsh powershell cmd node npm npx git pip pip3 pytest py python python3 "
+    "ruff uv claude".split()
+)
+_PYTHONS = {"py", "python", "python3"}
+
+
+def _label(text: str) -> str:
+    return text if _NAME.fullmatch(text or "") else "?"
+
+
+#: A shell word: a quoted string kept whole (so its words are never mistaken for a
+#: program), or a run of non-space characters.
+_WORD = re.compile(r"\"[^\"]*\"|'[^']*'|\S+")
+
+
+def _program(command: str) -> str:
+    """The program a shell command runs, as a label: `cd x && pytest -q` -> `pytest`."""
+    words = [w.strip("\"'&") for w in _WORD.findall(command)]
+    while words and (words[0] in ("cd", "") or "=" in words[0]):
+        if words[0] == "cd":
+            words = words[2:] if len(words) > 1 and words[1] != "/d" else words[3:]
+        else:
+            words = words[1:]
+    if not words:
+        return "?"
+    program = words[0]
+    name = re.split(r"[\\/]", program)[-1].removesuffix(".exe")
+    if name != program and name.lower() not in _KNOWN_BY_PATH:
+        return "(local script)"
+    if name.lower() in _PYTHONS and len(words) > 2 and words[1] == "-m":
+        return f"{_label(name)} {_label(words[2])}"
+    return _label(name)
+
+
 def _source_of_tool(name: str, tool_input: dict) -> str:
     if name in ("Bash", "PowerShell"):
-        command = str(tool_input.get("command", "")).strip()
-        command = re.sub(r"^(cd \S+ && |cd /d \S+ && )", "", command)
-        words = re.findall(r"[\w.\-]+", command)
-        words = [w for w in words if not w.startswith(("-", "/", "C:", "c:"))]
-        first = words[0] if words else "?"
-        if first.endswith(("python.exe", "python")) and len(words) > 1:
-            first = "python " + (words[2] if words[1] == "m" and len(words) > 2 else words[1])
-        return f"{name}: {first}"
+        return f"{name}: {_program(str(tool_input.get('command', '')))}"
     if name.startswith("mcp__"):
-        return "MCP: " + name.split("__")[-1]
-    return name
+        return "MCP: " + _label(name.split("__")[-1])
+    return _label(name)
 
 
 def session_costs(path: Path) -> dict[str, list[float]]:
@@ -107,7 +142,8 @@ def session_costs(path: Path) -> dict[str, list[float]]:
             # A pasted image travels as base64 text in the log but costs ~1.5k tokens.
             raw = BASE64_RUN.sub("x" * 6000, json.dumps(attachment))
             size = len(raw) // CHARS_PER_TOKEN
-            events.append(("enter", f"attachment: {attachment.get('type', '?')}", size))
+            label = _label(str(attachment.get("type", "")))
+            events.append(("enter", f"attachment: {label}", size))
 
     # Calls after each event, up to the next compaction.
     totals: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])

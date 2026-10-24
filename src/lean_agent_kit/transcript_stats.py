@@ -13,7 +13,8 @@ each tool call is recorded with its name and input. This reads them and reports,
 Then it compares requests before and after a cutoff (for example the day a project map
 was introduced), optionally only those that touched a given path.
 
-It prints numbers only. No prompt, reply or file content is ever written out.
+It prints numbers only; the CSV adds session file and project folder names. No prompt,
+reply, tool input or file content is ever printed or written out.
 
     lean-agents stats --split 2026-10-22T15:26:55Z --match options-scanner
     lean-agents stats --csv requests.csv
