@@ -130,3 +130,44 @@ def test_merge_worker_logs_adds_each_run_once(tmp_path) -> None:
     assert run.merge_worker_logs(tmp_path) == 2
     assert run.merge_worker_logs(tmp_path) == 0
     assert len(run.read_rows(tmp_path / "runs.jsonl")) == 3
+
+
+def test_helper_arms_add_the_explorer_and_its_tool(monkeypatch, tmp_path) -> None:
+    import json
+    from types import SimpleNamespace
+
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return SimpleNamespace(stdout='{"is_error": false, "result": "ok"}', stderr="")
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+    args = SimpleNamespace(claude="claude", max_turns=40, out=tmp_path, model=None, timeout=60)
+    run.run_agent("p", tmp_path, run.CHANGE_TOOLS, args, {}, run.ARMS["X2"], "change")
+    command = seen["command"]
+    allowed = command[command.index("--allowedTools") + 1 : command.index("--strict-mcp-config")]
+    assert allowed == [*run.TIGHT_TOOLS["change"], "Agent"]
+    assert json.loads(command[command.index("--agents") + 1])["explorer"]["model"] == "haiku"
+    assert "up to 2 explorers" in command[command.index("--system-prompt") + 1]
+
+
+def test_run_tool_arm_swaps_bash_for_the_small_tool_on_changes(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    seen = []
+
+    def fake_run(command, **kwargs):
+        seen.append(command)
+        return SimpleNamespace(stdout='{"is_error": false, "result": "ok"}', stderr="")
+
+    monkeypatch.setattr(run.subprocess, "run", fake_run)
+    args = SimpleNamespace(claude="claude", max_turns=40, out=tmp_path, model=None, timeout=60)
+    run.run_agent("p", tmp_path, run.CHANGE_TOOLS, args, {}, run.ARMS["R3"], "change")
+    run.run_agent("p", tmp_path, run.QUESTION_TOOLS, args, {}, run.ARMS["R3"], "wiring")
+    change, question = seen
+    allowed = change[change.index("--allowedTools") + 1 : change.index("--strict-mcp-config")]
+    assert "Bash" not in allowed and "mcp__lean__run" in allowed
+    assert change[change.index("--mcp-config") + 1].endswith("run-tool-mcp.json")
+    assert "Bash" not in change[change.index("--tools") + 1 :]
+    assert question[question.index("--mcp-config") + 1].endswith("no-mcp.json")

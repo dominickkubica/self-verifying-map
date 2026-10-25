@@ -149,7 +149,67 @@ ARMS = {
         "cache_ttl": "5m",
         "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet", "change": "sonnet"},
     },
+    # X1, X2: P with searching handed to read-only explorer helpers on Haiku, so search
+    # results stay out of the main context; X2 may run two at once. Changes only.
+    # R3: P with Bash replaced on code changes by the kit's `run` tool, the same capability
+    # with a definition of about a hundred tokens instead of 4.2k. (R2, in the logs from
+    # 2026-10-24, ran an earlier tool that hung on runaway commands and was launched with
+    # the worktree's PYTHONPATH replaced; it is not comparable.)
+    "R3": {
+        "tree": "slimp",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "run_tool": True,
+        "models": {"wiring": "sonnet", "trap": "sonnet", "control": "sonnet", "change": "sonnet"},
+    },
+    "X1": {
+        "tree": "slimp",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "helpers": 1,
+        "models": {"change": "sonnet"},
+    },
+    "X2": {
+        "tree": "slimp",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "helpers": 2,
+        "models": {"change": "sonnet"},
+    },
 }
+
+#: The helper the X arms delegate searching to: cheap, read-only, and told to answer with
+#: locations rather than file contents, so its report is small.
+EXPLORER = {
+    "explorer": {
+        "description": "Finds where things are in this repository. Give it one precise "
+        "question; it returns file paths, line ranges and a one-line note per hit.",
+        "prompt": "You locate code. Use Grep and Glob first, Read only to confirm. Use at "
+        "most 8 tool calls. Answer with a short list: path:start-end and one line on what "
+        "is there. Never paste file contents.",
+        "tools": ["Read", "Grep", "Glob"],
+        "model": "haiku",
+    }
+}
+
+
+def helper_prompt(helpers: int) -> str:
+    many = (
+        f" You may start up to {helpers} explorers at once, in one turn, for independent questions."
+        if helpers > 1
+        else ""
+    )
+    return (
+        " Do not search the code yourself: ask the explorer agent where things are, then "
+        "Read only the line ranges it returns." + many
+    )
+
 
 #: The reply Claude Code gives when the account's session or usage limit is reached.
 LIMIT_ERROR = re.compile(r"(session|usage|rate) limit", re.I)
@@ -501,10 +561,21 @@ def run_agent(
         "--mcp-config",
         str(args.out / "no-mcp.json"),
     ]
+    if arm.get("run_tool") and "Bash" in tools:
+        tools = [tool for tool in tools if tool != "Bash"]
+        allowed = [*tools, "mcp__lean__run"]
+        start, end = command.index("--allowedTools") + 1, command.index("--strict-mcp-config")
+        command[start:end] = allowed
+        command[command.index("--mcp-config") + 1] = str(args.out / "run-tool-mcp.json")
+    if arm.get("helpers"):
+        tools = [*tools, "Agent"]
+        command += ["--agents", json.dumps(EXPLORER)]
+        command[command.index("--allowedTools") + 1 : command.index("--strict-mcp-config")] = tools
     if arm.get("lean"):
         command += ["--tools", *tools, *LEAN_FLAGS]
     if arm.get("system") == "minimal":
-        command += ["--system-prompt", MINIMAL_SYSTEM]
+        system = MINIMAL_SYSTEM + (helper_prompt(arm["helpers"]) if arm.get("helpers") else "")
+        command += ["--system-prompt", system]
     if arm.get("effort"):
         command += ["--effort", arm["effort"]]
     model = arm.get("models", {}).get(kind) or args.model
@@ -613,6 +684,16 @@ def main(argv: list[str] | None = None) -> int:
         python,
     )
     (args.out / "no-mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
+    # Started from a bootstrap rather than PYTHONPATH, so the tool inherits the session's
+    # environment unchanged, as Bash does.
+    bootstrap = (
+        f"import sys; sys.path.insert(0, {str(HERE.parent / 'src')!r}); "
+        "from lean_agent_kit.run_tool import main; raise SystemExit(main())"
+    )
+    run_tool_server = {"command": sys.executable, "args": ["-c", bootstrap]}
+    (args.out / "run-tool-mcp.json").write_text(
+        json.dumps({"mcpServers": {"lean": run_tool_server}}), encoding="utf-8"
+    )
     log = args.out / "runs.jsonl"
     # A worker also reads the main log: runs done there are skipped and inform estimates,
     # but only its own new runs count against its share of the budget.

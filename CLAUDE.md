@@ -12,6 +12,8 @@ Public at github.com/dominickkubica/self-verifying-map. Owner: Dominick. MIT.
 - Edit with small targeted edits; search, then read line ranges; run only relevant tests.
 - Commit and push only when asked.
 - Benchmark runs cost real usage: one repetition while iterating, more only to confirm.
+- One topic per session; past ~150k tokens, update `docs/handoff.md` and start fresh. Always
+  pass `--budget-usd` to benchmark runs.
 
 ## Layout
 - `src/lean_agent_kit/`: the installable package (`pyproject.toml`, name `lean-agent-kit`,
@@ -41,5 +43,6 @@ Public at github.com/dominickkubica/self-verifying-map. Owner: Dominick. MIT.
 - `CONTRIBUTING.md`, `CHANGELOG.md`, `.github/ISSUE_TEMPLATE/`.
 
 ## Read when relevant
+- `docs/handoff.md`: current state, findings and next steps. Read it first.
 - `docs/production-brief.md`: what "production-worthy" means for this repo, and the work
   list to get there.

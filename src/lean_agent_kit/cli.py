@@ -22,6 +22,7 @@ COMMANDS = {
     "slim": ("slim_claude_md", "Split CLAUDE.md into a small core and sections read on demand"),
     "prefetch": ("map_prefetch", "UserPromptSubmit hook: inject map facts the prompt names"),
     "map": ("repomap.cli", "Generate the wiring map, check it against the code, stamp notes"),
+    "run-tool": ("run_tool", "MCP server: a shell tool with a one-line definition, for Bash"),
 }
 
 
