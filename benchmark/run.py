@@ -313,6 +313,43 @@ def repo_interpreter(repo: Path) -> str:
     raise SystemExit(f"no venv or .venv in {repo}; pass --python with the repo's interpreter")
 
 
+#: Where the repository's instructions say its interpreter lives. A worktree has no virtual
+#: environment of its own, so each gets a link to the one the benchmark runs with.
+VENV_LINK = "venv"
+
+
+def link_venv(path: Path, python: str) -> None:
+    """Link the worktree's venv to the environment `python` belongs to, if it is one."""
+    link = path / VENV_LINK
+    # Not resolved: a venv's interpreter can be a symlink to the base one.
+    env = Path(python).absolute().parent.parent
+    if os.path.lexists(link) or not (env / "pyvenv.cfg").exists():
+        return
+    if os.name == "nt":
+        # A junction needs no symlink privilege.
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(env)], check=True, capture_output=True
+        )
+    else:
+        link.symlink_to(env, target_is_directory=True)
+
+
+def unlink_venv(path: Path) -> None:
+    """Remove the link alone, so removing the worktree cannot reach the real environment."""
+    link = path / VENV_LINK
+    if os.name == "nt":
+        try:
+            os.rmdir(link)  # removes a junction; refuses a real, non-empty folder
+        except OSError:
+            pass
+    elif link.is_symlink():
+        link.unlink()
+
+
+def touched_files(path: Path) -> list[str]:
+    return git(["status", "--porcelain", "--", ".", f":(exclude){VENV_LINK}"], path).splitlines()
+
+
 def install_hooks(path: Path, python: str) -> None:
     """The prefetch hook on every prompt, and a map regeneration when the agent stops."""
     hooks = path / ".claude" / "hooks"
@@ -350,6 +387,7 @@ def setup(repo: Path, out: Path, commit: str, trees: set[str], python: str = "py
     for tree in sorted(trees):
         path = worktree(out, tree)
         if path.exists():
+            link_venv(path, python)
             continue
         git(["worktree", "add", "--detach", str(path), commit], repo)
         if tree in ("slim", "slimg", "slimp"):
@@ -385,15 +423,18 @@ def setup(repo: Path, out: Path, commit: str, trees: set[str], python: str = "py
                 ],
                 path,
             )
+        # After the commits above, so the link is never committed.
+        link_venv(path, python)
 
 
 def reset(path: Path) -> None:
     git(["reset", "-q", "--hard", "HEAD"], path)
-    git(["clean", "-q", "-fd"], path)
+    git(["clean", "-q", "-fd", "-e", f"/{VENV_LINK}"], path)
 
 
 def cleanup(repo: Path, out: Path) -> None:
     for path in sorted([*out.glob("wt-*"), *out.glob("worker-*/wt-*")]):
+        unlink_venv(path)
         git(["worktree", "remove", "--force", str(path)], repo)
 
 
@@ -752,7 +793,7 @@ def main(argv: list[str] | None = None) -> int:
             grade = grade_change(task, path, python, env)
         else:
             grade = grade_question(task, result.get("result", ""))
-        touched = git(["status", "--porcelain"], path).splitlines()
+        touched = touched_files(path)
         limited = turn_limited(result, args.max_turns)
         if limited:
             # DESIGN.md: a run that hits the turn limit is wrong, whatever it left behind.

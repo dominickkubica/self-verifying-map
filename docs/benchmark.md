@@ -23,7 +23,9 @@ commit `90fe543`: 124 Python and React modules, with a self-verifying map. The t
 
 1. `run.py` makes a git worktree per arm at the benchmark commit and prepares it once: arm
    A has the map removed, the lean arms have the slimmed instruction file, arm P has the
-   prefetch hook installed. Every run starts from that worktree reset to its commit.
+   prefetch hook installed. Each worktree's `venv` links to the benchmark's interpreter's
+   environment (a junction on Windows), so the repo's `venv\Scripts\python` works there.
+   Every run starts from that worktree reset to its commit.
 2. It starts a fresh, non-interactive Claude Code session (`claude -p`) in the worktree,
    with the arm's model, tools, system prompt and effort, and a limit of 40 turns. The
    prompt goes in on stdin.
