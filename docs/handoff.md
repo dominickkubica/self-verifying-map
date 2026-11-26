@@ -27,6 +27,8 @@ as pilot results.
 | Fixed context of a lean code change | 10.2k tokens per call: Bash definition 4.2k, Grep 1.4k, Edit 0.6k, Glob 0.35k, slim CLAUDE.md and map rule 1.2k. Claude Code's default system prompt alone is 10.4k | measured with one-word replies |
 | R3: Bash replaced by the kit's `run` tool | Per-call context 10.1k to 6.1k, but more turns (median 22 against 19); total $2.78 against $2.91, medians equal, all 32 correct. Not better: Bash stays | 32 |
 | R2 | An earlier run tool that hung and was launched with a broken PYTHONPATH. Not comparable; ignore | 11 |
+| Three-way on Sonnet low (A2 no map, C2 CodeGraph, P2 map) | All 19 of 20; total $2.19 / $2.45 / $2.05; map 0.89 on wiring (interval includes 1) | 60 |
+| Three-way on Opus (A3, C3, P3) | 20 / 19 / 20 of 20; total $5.71 / $6.23 / $5.59; map 0.80 on wiring [0.68, 0.95]; CodeGraph 1.06 on wiring, missed t12 | 60 |
 
 Not yet explained: the agent in the benchmark worktrees often hunts for `venv\Scripts\python`
 (the instruction file names it, the worktree has none), sometimes with `find /`. This

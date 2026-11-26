@@ -76,7 +76,10 @@ python benchmark/analyze.py bench-out/runs.jsonl
 python benchmark/run.py --repo ../options-scanner --out bench-out --cleanup
 ```
 
-`--dry-run` checks the plumbing without starting an agent. `--arms` picks setups (see
+`--dry-run` checks the plumbing without starting an agent; it logs placeholder runs, so
+start the real run with a fresh `--out` (or move its `runs.jsonl` aside). Arms C, C2 and C3
+compare with [CodeGraph](https://github.com/colbymchenry/codegraph): install it and pass
+`--codegraph <path to the codegraph command>`. `--arms` picks setups (see
 `ARMS` in `run.py`), `--only` picks tasks, and `--reps` sets repetitions.
 
 The runner has been used on Windows only. It needs nothing Windows-specific, but no run on

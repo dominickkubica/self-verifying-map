@@ -6,6 +6,19 @@ All notable changes to `lean-agent-kit`. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Benchmark arms for a three-way comparison of mapping tools on one model and harness: no
+  map, CodeGraph (installed and indexed the way its installer sets it up), and the map with
+  its prefetch hook; on Sonnet at low effort (A2, C2, P2) and on Opus (A3, C3, P3). Results
+  in `docs/results.md`.
+
+### Changed
+
+- The benchmark's code-change prompt asks for only the tests that cover the change, and every
+  arm runs with the repository's interpreter first on `PATH`, so no arm spends turns finding
+  one or running the whole suite.
+
 ## [0.1.0] - 2026-10-24
 
 The first release: the tools behind the measurements in this repository, installable as

@@ -37,6 +37,8 @@ Reproduce any ratio below with `python benchmark/analyze.py <file> --base <arm>`
 | ESC | Sonnet | E with Sonnet for everything, code changes included: **the lean setup** |
 | G | Sonnet | ESC with an instruction to search the map before the code |
 | P | Sonnet | ESC with the prefetch hook (`lean-agents prefetch`) |
+| A2, C2, P2 | Sonnet, low effort | Default Claude Code harness (tools, system prompt, full instruction file); only the mapping tool differs: none (A2), CodeGraph (C2), the map with its prefetch hook (P2) |
+| A3, C3, P3 | Opus, default effort | The same three on Opus |
 
 Task ids are those in `benchmark/DESIGN.md`: `w` wiring questions, `t` trap questions, `k`
 a control question the map should not help with, `c` code changes graded by hidden tests.
@@ -146,6 +148,43 @@ calls under H and 45 under EH, so it is not recommended.
 | Correct | 6 of 7 | 7 of 7 | 7 of 7 |
 
 On w07 and t11 the agent under P still searched, and cost more than under ESC.
+
+## Three-way: no map, CodeGraph, the map
+
+Same model, effort and harness in each comparison, so only the mapping tool differs:
+none, [CodeGraph](https://github.com/colbymchenry/codegraph) 1.6.4 set up the way its own
+installer sets it up for Claude Code (its MCP server, its `CLAUDE.md` block, its permission
+rule and its prompt hook, on a built index), or the map with its prefetch hook on the full
+instruction file. All 20 tasks, one run each, on Claude Code 2.1.332 on Linux. Runs were
+parallel (`--workers`), so they share the provider's prompt cache: compare arms within a
+table, not with the sequential tables above. The code-change prompt here asks for only the
+tests that cover the change, and `python` is the repository's interpreter in every arm.
+
+`three-way-sonnet-2026-11-26.jsonl`: 60 runs, Sonnet at low effort.
+
+| | A2: no map | C2: CodeGraph | P2: the map |
+|---|---|---|---|
+| Correct | 19 of 20 (missed t13) | 19 of 20 (missed t12) | 19 of 20 (missed t13) |
+| Total cost | $2.19 | $2.45 | $2.05 |
+| Wiring questions, median cost ratio to A2 (95% interval over tasks) | 1 | 1.11 [0.94, 1.23] | 0.89 [0.64, 1.10] |
+| Code changes, median cost ratio to A2 | 1 | 1.04 [0.96, 1.08] | 1.02 [0.97, 1.12] |
+
+`three-way-opus-2026-11-26.jsonl`: 60 runs, Opus at its default effort.
+
+| | A3: no map | C3: CodeGraph | P3: the map |
+|---|---|---|---|
+| Correct | 20 of 20 | 19 of 20 (missed t12) | 20 of 20 |
+| Total cost | $5.71 | $6.23 | $5.59 |
+| Wiring questions, median cost ratio to A3 (95% interval over tasks) | 1 | 1.06 [1.00, 1.12] | 0.80 [0.68, 0.95] |
+| Code changes, median cost ratio to A3 | 1 | 1.19 [0.80, 1.41] | 1.06 [0.68, 1.45] |
+
+With one run per task the intervals are rough (they resample 20 tasks, not repetitions).
+On the same model the map lowers the cost of wiring questions (on Opus by a fifth, the one
+interval here that excludes no change) and changes little else; CodeGraph costs a little more
+in both. The large savings of the lean setup come from its harness and model, not the map.
+`three-way-mixed-models-stopped-2026-11-26.jsonl` is a first attempt (17 runs) that compared
+default and CodeGraph on Opus against P on Sonnet, stopped because the arms differed in
+model; it is kept for the record and supports no comparison.
 
 ## Measurements outside the benchmark
 

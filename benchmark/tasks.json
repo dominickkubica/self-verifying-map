@@ -2,7 +2,7 @@
   "repo_commit": "90fe543",
   "answers_frozen_from": "repomap.generate() and the source at repo_commit",
   "suffix_question": "Answer concisely. Do not change any files.",
-  "suffix_change": "Make the change in this repository. Do not commit. Keep the project's own docs and checks consistent with the change.",
+  "suffix_change": "Make the change in this repository. Do not commit. Keep the project's own docs and checks consistent with the change. Run only the tests that cover what you changed (for example `python -m pytest tests/test_cli.py -q`), not the whole suite; `python` already has the project's dependencies.",
   "tasks": [
     {"id": "w01", "kind": "wiring", "prompt": "Which modules write to the opportunity_log table, and which read it?",
      "required": [["storage/validation.py", "validation.py"], ["jobs/validate.py", "validate.py"]]},

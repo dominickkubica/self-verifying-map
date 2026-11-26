@@ -72,6 +72,44 @@ SLIM_KEEP = ("Stack", "Rules", "Layout", "Non-goals")
 #: (falling back to --model). A and B are the map benchmark; L, S and R are optimizers.
 ARMS = {
     "A": {"tree": "nomap"},
+    # C: A plus CodeGraph (github.com/colbymchenry/codegraph), set up the way its own installer
+    # sets it up for Claude Code: its MCP server, its CLAUDE.md block, its permission rule and its
+    # prompt hook, on a built index.
+    "C": {"tree": "codegraph", "codegraph": True},
+    # The fair three-way: Claude Code's default harness (tools, system prompt, full instruction
+    # file) on one model and effort for all three, so only the mapping tool differs: none (A2),
+    # CodeGraph (C2), or the self-verifying map with its prefetch hook (P2). P and C above differ
+    # in model and harness too.
+    "A2": {
+        "tree": "nomap",
+        "effort": "low",
+        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "sonnet"),
+    },
+    "C2": {
+        "tree": "codegraph",
+        "codegraph": True,
+        "effort": "low",
+        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "sonnet"),
+    },
+    "P2": {
+        "tree": "mapp",
+        "effort": "low",
+        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "sonnet"),
+    },
+    # The same three on Opus at its default effort.
+    "A3": {
+        "tree": "nomap",
+        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
+    },
+    "C3": {
+        "tree": "codegraph",
+        "codegraph": True,
+        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
+    },
+    "P3": {
+        "tree": "mapp",
+        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
+    },
     "B": {"tree": "map"},
     "L": {"tree": "map", "lean": True},
     "S": {"tree": "slim", "lean": True},
@@ -345,13 +383,26 @@ def install_hooks(path: Path, python: str) -> None:
     (path / ".claude" / "settings.json").write_text(json.dumps(settings, indent=2), "utf-8")
 
 
-def setup(repo: Path, out: Path, commit: str, trees: set[str], python: str = "python") -> None:
+def setup(
+    repo: Path,
+    out: Path,
+    commit: str,
+    trees: set[str],
+    python: str = "python",
+    codegraph: str = "codegraph",
+) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for tree in sorted(trees):
         path = worktree(out, tree)
         if path.exists():
             continue
         git(["worktree", "add", "--detach", str(path), commit], repo)
+        if (
+            tree == "mapp"
+        ):  # the full instruction file (no slimming) with the map, its prefetch rule and hooks
+            replace_map_rule(path, PREFETCH_RULE)
+            install_hooks(path, python)
+            commit_tree(path, "benchmark tree: mapp")
         if tree in ("slim", "slimg", "slimp"):
             slim_instructions(path)
             if tree == "slimg":
@@ -360,7 +411,7 @@ def setup(repo: Path, out: Path, commit: str, trees: set[str], python: str = "py
                 replace_map_rule(path, PREFETCH_RULE)
                 install_hooks(path, python)
             commit_tree(path, f"benchmark tree: {tree}")
-        if tree == "nomap":
+        if tree in ("nomap", "codegraph"):
             for item in NO_MAP_PATHS:
                 git(["rm", "-r", "-q", "--ignore-unmatch", item], path)
             instructions = path / "CLAUDE.md"
@@ -385,6 +436,36 @@ def setup(repo: Path, out: Path, commit: str, trees: set[str], python: str = "py
                 ],
                 path,
             )
+        if tree == "codegraph":
+            install_codegraph(path, codegraph)
+
+
+def install_codegraph(path: Path, codegraph: str) -> None:
+    """CodeGraph's own install for Claude Code, local to the tree, then its index; committed
+    (index included) so every run starts from the same graph."""
+    env = {**os.environ, "CODEGRAPH_TELEMETRY": "0", "HOME": str(path.parent / "codegraph-home")}
+    (path.parent / "codegraph-home").mkdir(exist_ok=True)
+    for command in (["install", "--target", "claude", "--location", "local", "--yes"], ["init"]):
+        done = subprocess.run(
+            [codegraph, *command], cwd=path, env=env, capture_output=True, text=True, timeout=900
+        )
+        if done.returncode != 0:
+            raise SystemExit(f"codegraph {command[0]} failed: {done.stderr[-1000:]}")
+    git(["add", "-A", "-f"], path)
+    git(
+        [
+            "-c",
+            "user.name=bench",
+            "-c",
+            "user.email=bench@localhost",
+            "commit",
+            "-q",
+            "--no-verify",
+            "-m",
+            "benchmark arm C: CodeGraph",
+        ],
+        path,
+    )
 
 
 def reset(path: Path) -> None:
@@ -571,6 +652,15 @@ def run_agent(
         tools = [*tools, "Agent"]
         command += ["--agents", json.dumps(EXPLORER)]
         command[command.index("--allowedTools") + 1 : command.index("--strict-mcp-config")] = tools
+    if arm.get("codegraph"):
+        start, end = command.index("--allowedTools") + 1, command.index("--strict-mcp-config")
+        command[start:end] = [*tools, "mcp__codegraph"]
+        command[command.index("--mcp-config") + 1] = str(args.out / "codegraph-mcp.json")
+        # its prompt hook runs `codegraph prompt-hook`
+        env = {
+            **env,
+            "PATH": os.pathsep.join([str(Path(args.codegraph).parent), env.get("PATH", "")]),
+        }
     if arm.get("lean"):
         command += ["--tools", *tools, *LEAN_FLAGS]
     if arm.get("system") == "minimal":
@@ -635,6 +725,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--claude", default=shutil.which("claude") or "claude")
     parser.add_argument(
+        "--codegraph", default=shutil.which("codegraph") or "codegraph", help="For arm C."
+    )
+    parser.add_argument(
         "--python",
         default=None,
         help="Interpreter with the repo's deps (default: the repo's venv or .venv).",
@@ -682,8 +775,17 @@ def main(argv: list[str] | None = None) -> int:
         spec["repo_commit"],
         {ARMS[a]["tree"] for a in arm_names},
         python,
+        args.codegraph,
     )
     (args.out / "no-mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
+    codegraph_server = {
+        "type": "stdio",
+        "command": args.codegraph,
+        "args": ["serve", "--mcp", "--no-telemetry"],
+    }
+    (args.out / "codegraph-mcp.json").write_text(
+        json.dumps({"mcpServers": {"codegraph": codegraph_server}}), encoding="utf-8"
+    )
     # Started from a bootstrap rather than PYTHONPATH, so the tool inherits the session's
     # environment unchanged, as Bash does.
     bootstrap = (
@@ -727,7 +829,14 @@ def main(argv: list[str] | None = None) -> int:
                 return 3
         path = worktree(args.out, ARMS[arm]["tree"])
         reset(path)
-        env = {**os.environ, "PYTHONPATH": str(path / "src")}
+        # `python` is the repository's interpreter, with its dependencies, in every arm: agents
+        # otherwise spend turns hunting for one (the instruction file names a Windows venv path the
+        # worktrees don't have)
+        env = {
+            **os.environ,
+            "PYTHONPATH": str(path / "src"),
+            "PATH": os.pathsep.join([str(Path(python).parent), os.environ.get("PATH", "")]),
+        }
         change = task["kind"] == "change"
         prompt = f"{task['prompt']}\n\n{spec['suffix_change' if change else 'suffix_question']}"
         if args.dry_run:
