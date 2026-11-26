@@ -31,6 +31,10 @@ this setting against $1.80 to $3.57 for the default agent (one run each; two of 
 stopped at the 40-turn limit), every lean change passing its hidden test; questions at
 $0.01 to $0.04 against about $0.31. Every run: `docs/results.md`.
 
+The last sentence of the short prompt asks for complete lists. Without it, on Django the lean
+agent left one item out of two of ten "which" questions (14 of 16 tasks correct, $0.60);
+with it, 16 of 16 at $0.51, against $1.55 for the default harness on the same model.
+
 ## Interactive sessions
 
 - Slim `CLAUDE.md` with `lean-agents slim`.

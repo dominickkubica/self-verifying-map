@@ -21,6 +21,18 @@ the four default code changes stopped at the 40-turn limit, so their cost is a f
 Every run is in `benchmark/results/`; `docs/results.md` lists each one with its sample
 size, and `docs/benchmark.md` explains how the benchmark works.
 
+On a large codebase (Django: 2,943 Python files, 1.15 million lines), with the same model
+and effort for every setup (Sonnet, low), so only the harness and tools differ:
+
+| Setup | 16 tasks correct | Total cost |
+|---|---|---|
+| Default Claude Code | 16 | $1.55 |
+| Default plus CodeGraph | 15 | $2.06 |
+| Lean setup | 16 | $0.51 |
+
+One run per task: 10 wiring questions, 2 controls, 2 code changes and 2 bug fixes with
+hidden tests. The saving here comes from the harness alone, since the model is the same.
+
 ## Quick start
 
 1. **Install** (Python 3.10+, no dependencies):

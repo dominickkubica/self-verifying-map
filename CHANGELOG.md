@@ -27,6 +27,8 @@ All notable changes to `lean-agent-kit`. The format follows
 
 ### Changed
 
+- The short system prompt in `lean/system-prompt.txt` asks for complete lists: on Django it
+  took the lean setup from 14 to 16 of 16 tasks correct.
 - The benchmark's code-change prompt asks for only the tests that cover the change, and every
   arm runs with the repository's interpreter first on `PATH`, so no arm spends turns finding
   one or running the whole suite.
