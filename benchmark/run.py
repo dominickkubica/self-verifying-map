@@ -53,6 +53,10 @@ NO_MAP_EDITS = [
 
 QUESTION_TOOLS = ["Read", "Grep", "Glob", "Bash"]
 CHANGE_TOOLS = ["Read", "Grep", "Glob", "Bash", "Edit", "Write"]
+#: Task kinds. A change adds something; a fix starts from a planted bug that a prompt describes
+#: only by its symptom. Both edit the tree and are graded by a hidden test.
+KINDS = ("wiring", "trap", "control", "change", "fix")
+CHANGE_KINDS = ("change", "fix")
 
 #: Harness settings that shrink what every turn carries: only the task's tools are
 #: defined (not just permitted), the skills listing is off, and the per-session dynamic
@@ -83,32 +87,32 @@ ARMS = {
     "A2": {
         "tree": "nomap",
         "effort": "low",
-        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "sonnet"),
+        "models": dict.fromkeys(KINDS, "sonnet"),
     },
     "C2": {
         "tree": "codegraph",
         "codegraph": True,
         "effort": "low",
-        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "sonnet"),
+        "models": dict.fromkeys(KINDS, "sonnet"),
     },
     "P2": {
         "tree": "mapp",
         "effort": "low",
-        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "sonnet"),
+        "models": dict.fromkeys(KINDS, "sonnet"),
     },
     # The same three on Opus at its default effort.
     "A3": {
         "tree": "nomap",
-        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
+        "models": dict.fromkeys(KINDS, "opus"),
     },
     "C3": {
         "tree": "codegraph",
         "codegraph": True,
-        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
+        "models": dict.fromkeys(KINDS, "opus"),
     },
     "P3": {
         "tree": "mapp",
-        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
+        "models": dict.fromkeys(KINDS, "opus"),
     },
     # P4 (Sonnet, low) and P5 (Opus): P2 and P3 plus codefactory's change prefetch, a second prompt
     # hook that hands the agent the definitions, callers, tests and doc mentions of what the prompt
@@ -117,12 +121,33 @@ ARMS = {
         "tree": "mappc",
         "like": "P2",
         "effort": "low",
-        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "sonnet"),
+        "models": dict.fromkeys(KINDS, "sonnet"),
     },
     "P5": {
         "tree": "mappc",
         "like": "P3",
-        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
+        "models": dict.fromkeys(KINDS, "opus"),
+    },
+    # L4: P4 in the lean harness (its tools, short system prompt and flags): the whole of
+    # lean agents, against A2, C2 and P4 on the same model and effort.
+    "L4": {
+        "tree": "mappc",
+        "like": "P4",
+        "lean": True,
+        "tools": "tight",
+        "system": "minimal",
+        "effort": "low",
+        "models": dict.fromkeys(KINDS, "sonnet"),
+    },
+    # L5: L4 with COMPLETE_SYSTEM.
+    "L5": {
+        "tree": "mappc",
+        "like": "L4",
+        "lean": True,
+        "tools": "tight",
+        "system": "complete",
+        "effort": "low",
+        "models": dict.fromkeys(KINDS, "sonnet"),
     },
     "B": {"tree": "map"},
     "L": {"tree": "map", "lean": True},
@@ -278,6 +303,11 @@ MINIMAL_SYSTEM = (
     "only what the task needs, and stop as soon as you can answer or the change is done "
     "and verified. Do not commit. Reply concisely."
 )
+#: MINIMAL_SYSTEM plus one sentence against incomplete lists: in a large codebase the lean arm
+#: stopped at the first few answers to "which X do Y" questions.
+COMPLETE_SYSTEM = MINIMAL_SYSTEM + (
+    " When asked which or what things do something, find every one before answering."
+)
 
 
 def git(args: list[str], cwd: Path) -> str:
@@ -365,7 +395,9 @@ def repo_interpreter(repo: Path) -> str:
     raise SystemExit(f"no venv or .venv in {repo}; pass --python with the repo's interpreter")
 
 
-def install_hooks(path: Path, python: str, codefactory: str | None = None) -> None:
+def install_hooks(
+    path: Path, python: str, codefactory: str | None = None, stop: str | None = None
+) -> None:
     """The prefetch hook on every prompt, and a map regeneration when the agent stops; with
     `codefactory`, its change prefetch on every prompt too."""
     hooks = path / ".claude" / "hooks"
@@ -403,13 +435,61 @@ def install_hooks(path: Path, python: str, codefactory: str | None = None) -> No
             "Stop": [
                 {
                     "hooks": [
-                        {"type": "command", "command": f'"{interpreter}" -m optscan map generate'}
+                        {
+                            "type": "command",
+                            "command": stop or f'"{interpreter}" -m optscan map generate',
+                        }
                     ]
                 }
             ],
         }
     }
     (path / ".claude" / "settings.json").write_text(json.dumps(settings, indent=2), "utf-8")
+
+
+GENERIC_PREFETCH_RULE = (
+    "\n## Map\n\nFacts about what your prompt names (where it is defined, what calls it, which "
+    "tests cover it) are added to your context automatically; they are generated from the "
+    "code, so trust them. `map/generated/` lists every module with its purpose: Grep it for a "
+    "name rather than reading whole files.\n"
+)
+
+
+def lean_agents_command(python: str, *args: str) -> list[str]:
+    """`lean-agents <args>` from this checkout, under any Python, without installing it."""
+    bootstrap = (
+        f"import sys; sys.path.insert(0, {str(HERE.parent / 'src')!r}); "
+        f"from lean_agent_kit.cli import main; raise SystemExit(main({list(args)!r}))"
+    )
+    return [python, "-c", bootstrap]
+
+
+def setup_generic(path: Path, tree: str, spec: dict, python: str, codegraph: str, codefactory: str):
+    """A repository with no map plugin of its own: every tree gets the same short instruction
+    file; the map trees add a generic map (modules, SQL, routes) with its prefetch hook, and
+    (mappc) codefactory's change prefetch."""
+    generic = spec["generic"]
+    text = generic["instructions"].rstrip() + "\n"
+    if tree in ("mapp", "mappc"):
+        text += GENERIC_PREFETCH_RULE
+        (path / "map").mkdir(exist_ok=True)
+        config = {"required_notes": [], "extractors": generic["map_extractors"]}
+        (path / "map" / "config.json").write_text(json.dumps(config, indent=2) + "\n", "utf-8")
+        subprocess.run(lean_agents_command(python, "map", "generate"), cwd=path, check=True)
+        stop = " ".join(
+            f'"{a}"' for a in lean_agents_command(Path(python).as_posix(), "map", "generate")
+        )
+        install_hooks(path, python, codefactory if tree == "mappc" else None, stop=stop)
+    (path / "CLAUDE.md").write_text(text, encoding="utf-8", newline="\n")
+    commit_tree(path, f"benchmark tree: {tree}")
+    if tree == "codegraph":
+        install_codegraph(path, codegraph)
+    if tree == "mappc":
+        done = subprocess.run(
+            [codefactory, "prefetch", "."], cwd=path, capture_output=True, text=True
+        )
+        if done.returncode != 0:
+            raise SystemExit(f"codefactory prefetch failed: {done.stderr[-1000:]}")
 
 
 def setup(
@@ -420,6 +500,7 @@ def setup(
     python: str = "python",
     codegraph: str = "codegraph",
     codefactory: str = "codefactory",
+    spec: dict | None = None,
 ) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for tree in sorted(trees):
@@ -427,6 +508,9 @@ def setup(
         if path.exists():
             continue
         git(["worktree", "add", "--detach", str(path), commit], repo)
+        if spec and spec.get("generic"):
+            setup_generic(path, tree, spec, python, codegraph, codefactory)
+            continue
         if tree in ("mapp", "mappc"):
             # the full instruction file (no slimming) with the map, its prefetch rule and hooks
             replace_map_rule(path, PREFETCH_RULE)
@@ -503,13 +587,61 @@ def install_codegraph(path: Path, codegraph: str) -> None:
     )
 
 
+def base_file(path: Path) -> Path:
+    """Where a tree's own commit is kept while a planted bug is folded into it."""
+    return path.parent / f"{path.name}.base"
+
+
 def reset(path: Path) -> None:
-    git(["reset", "-q", "--hard", "HEAD"], path)
+    base = base_file(path)
+    git(["reset", "-q", "--hard", base.read_text().strip() if base.exists() else "HEAD"], path)
     git(["clean", "-q", "-fd"], path)
+
+
+def plant(
+    path: Path,
+    tree: str,
+    edits: list[dict],
+    python: str,
+    env: dict,
+    codefactory: str,
+    map_command: list[str] | None = None,
+):
+    """Put a fix task's bug in the tree, folded into the tree's commit so `git status` and
+    `git diff` show nothing, then rebuild what a real repository would have built from the
+    buggy code: the generated map, and codefactory's index."""
+    base = base_file(path)
+    if not base.exists():
+        base.write_text(git(["rev-parse", "HEAD"], path), encoding="utf-8")
+    for edit in edits:
+        target = path / edit["file"]
+        text = target.read_bytes().decode("utf-8")
+        if text.count(edit["old"]) != 1:
+            raise SystemExit(f"bug edit for {edit['file']} does not match exactly once")
+        target.write_bytes(text.replace(edit["old"], edit["new"]).encode("utf-8"))
+    if tree in ("mapp", "mappc"):
+        subprocess.run(
+            map_command or [python, "-m", "optscan", "map", "generate"],
+            cwd=path,
+            env=env,
+            check=True,
+            capture_output=True,
+        )
+    git(["add", "-A"], path)
+    git(
+        ["-c", "user.name=bench", "-c", "user.email=bench@localhost"]
+        + ["commit", "-q", "--amend", "--no-edit", "--no-verify"],
+        path,
+    )
+    if tree == "mappc":
+        subprocess.run([codefactory, "prefetch", "."], cwd=path, check=True, capture_output=True)
 
 
 def cleanup(repo: Path, out: Path) -> None:
     for path in sorted([*out.glob("wt-*"), *out.glob("worker-*/wt-*")]):
+        if path.suffix == ".base":
+            path.unlink()
+            continue
         git(["worktree", "remove", "--force", str(path)], repo)
 
 
@@ -621,10 +753,15 @@ FIRST_RUN_ESTIMATE = {"change": 4.0, "question": 0.5}
 def run_estimate(rows: list[dict], arm: str, kind: str) -> float:
     """The most a run of this arm and kind has cost so far, or a cautious default."""
     seen = [r["cost_usd"] or 0 for r in rows if r["arm"] == arm and r["kind"] == kind]
-    like = ARMS.get(arm, {}).get("like")  # a new arm costs about what the arm it extends does
-    if not seen and like:
-        seen = [r["cost_usd"] or 0 for r in rows if r["arm"] == like and r["kind"] == kind]
-    default = FIRST_RUN_ESTIMATE["change" if kind == "change" else "question"]
+    # nothing yet: what the arm it extends spent, then (for a fix) what a change cost
+    like = ARMS.get(arm, {}).get("like")
+    kinds = [kind, "change"] if kind == "fix" else [kind]
+    for other, other_kind in [(a, k) for k in kinds for a in (arm, like) if a]:
+        if not seen:
+            seen = [
+                r["cost_usd"] or 0 for r in rows if r["arm"] == other and r["kind"] == other_kind
+            ]
+    default = FIRST_RUN_ESTIMATE["change" if kind in CHANGE_KINDS else "question"]
     return max(seen) if seen else default
 
 
@@ -635,7 +772,24 @@ def grade_question(task: dict, answer: str) -> dict:
     return {"score": score, "grade": "correct" if score == 1 else "partial" if score else "wrong"}
 
 
-def grade_change(task: dict, path: Path, python: str, env: dict) -> dict:
+def grade_change(task: dict, path: Path, python: str, env: dict, spec: dict | None = None) -> dict:
+    generic = (spec or {}).get("generic")
+    if generic and generic.get("grade"):  # e.g. Django: tests/_hidden/ run by runtests.py
+        grade = generic["grade"]
+        hidden = HERE / grade["hidden_dir"] / task["hidden_test"]
+        target = path / grade["copy_to"].format(id=task["id"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        (target.parent / "__init__.py").touch()
+        shutil.copy(hidden, target)
+        command = [part.format(python=python, id=task["id"]) for part in grade["command"]]
+        try:
+            run = subprocess.run(
+                command, cwd=path, env=env, capture_output=True, text=True, timeout=900
+            )
+        finally:
+            shutil.rmtree(target.parent, ignore_errors=True)
+        passed = run.returncode == 0
+        return {"score": 1.0 if passed else 0.0, "grade": "correct" if passed else "wrong"}
     hidden = HERE / "hidden_tests" / task["hidden_test"]
     target = path / "tests" / f"_hidden_{hidden.name}"
     shutil.copy(hidden, target)
@@ -664,7 +818,7 @@ def run_agent(
     prompt: str, path: Path, tools: list[str], args, env: dict, arm: dict, kind: str
 ) -> dict:
     if arm.get("tools") == "tight":
-        tools = TIGHT_TOOLS["change" if kind == "change" else "question"]
+        tools = TIGHT_TOOLS["change" if kind in CHANGE_KINDS else "question"]
     # The prompt goes in on stdin: on Windows `claude` is a .cmd wrapper, and a newline in
     # an argument ends the command line there, silently dropping every flag after it.
     command = [
@@ -701,8 +855,9 @@ def run_agent(
         }
     if arm.get("lean"):
         command += ["--tools", *tools, *LEAN_FLAGS]
-    if arm.get("system") == "minimal":
-        system = MINIMAL_SYSTEM + (helper_prompt(arm["helpers"]) if arm.get("helpers") else "")
+    if arm.get("system") in ("minimal", "complete"):
+        system = COMPLETE_SYSTEM if arm["system"] == "complete" else MINIMAL_SYSTEM
+        system += helper_prompt(arm["helpers"]) if arm.get("helpers") else ""
         command += ["--system-prompt", system]
     if arm.get("effort"):
         command += ["--effort", arm["effort"]]
@@ -796,8 +951,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cleanup", action="store_true")
     parser.add_argument("--arms", default="A,B", help="Comma-separated, from ARMS.")
     parser.add_argument("--only", default=None, help="Comma-separated task ids, for iterating.")
+    parser.add_argument(
+        "--first-change-estimate",
+        type=float,
+        default=None,
+        help="Dollars assumed for a change or fix run before the log has one (default 4).",
+    )
     args = parser.parse_args(argv)
     args.out = args.out.resolve()
+    if args.first_change_estimate is not None:
+        FIRST_RUN_ESTIMATE["change"] = args.first_change_estimate
 
     if args.cleanup:
         cleanup(args.repo, args.out)
@@ -820,6 +983,7 @@ def main(argv: list[str] | None = None) -> int:
         python,
         args.codegraph,
         args.codefactory,
+        spec,
     )
     (args.out / "no-mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
     codegraph_server = {
@@ -878,11 +1042,25 @@ def main(argv: list[str] | None = None) -> int:
         # worktrees don't have)
         env = {
             **os.environ,
-            "PYTHONPATH": str(path / "src"),
+            "PYTHONPATH": str(path / spec.get("generic", {}).get("pythonpath", "src")),
             "PATH": os.pathsep.join([str(Path(python).parent), os.environ.get("PATH", "")]),
         }
-        change = task["kind"] == "change"
-        prompt = f"{task['prompt']}\n\n{spec['suffix_change' if change else 'suffix_question']}"
+        change = task["kind"] in CHANGE_KINDS
+        if task.get("bug"):
+            plant(
+                path,
+                ARMS[arm]["tree"],
+                task["bug"],
+                python,
+                env,
+                args.codefactory,
+                lean_agents_command(python, "map", "generate") if spec.get("generic") else None,
+            )
+        suffix = (
+            spec.get(f"suffix_{task['kind']}")
+            or spec["suffix_change" if change else "suffix_question"]
+        )
+        prompt = f"{task['prompt']}\n\n{suffix}"
         if args.dry_run:
             result = {"result": "", "session_id": None, "dry_run": True}
         else:
@@ -902,7 +1080,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Stopped at run {position}: {result.get('result')}", flush=True)
             return 2
         if change:
-            grade = grade_change(task, path, python, env)
+            grade = grade_change(task, path, python, env, spec)
         else:
             grade = grade_question(task, result.get("result", ""))
         touched = git(["status", "--porcelain"], path).splitlines()

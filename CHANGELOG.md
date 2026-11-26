@@ -15,6 +15,15 @@ All notable changes to `lean-agent-kit`. The format follows
 - Benchmark arms P4 (Sonnet, low effort) and P5 (Opus): the map plus codefactory's change
   prefetch as a second prompt hook (`--codefactory`). A new arm's first cost estimate comes
   from the arm it extends (`like`).
+- Fix tasks (kind `fix`): a bug planted from the task's `bug` edits before the run, folded
+  into the tree's commit, with the map and codefactory's index rebuilt; the tree is restored
+  after. Five for options-scanner (f21 to f25), with hidden tests.
+- Benchmarks on repositories without a map plugin: a task file's `generic` block gives the
+  instruction file every tree shares, the map's extractors, the import path and how to run a
+  hidden test. Arm L4 runs P4 in the lean harness.
+- Django benchmark tasks (`tasks-django.json`, `hidden_tests-django/`): 10 wiring questions, 2
+  controls, 2 changes and 2 fixes. Arm L5: L4 with a system prompt that asks for complete
+  lists. `--first-change-estimate` sets the budget guard's first guess for a change.
 
 ### Changed
 

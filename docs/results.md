@@ -217,6 +217,69 @@ exact line ranges it gives, rather than searching. Most of a change's turns come
 that, in editing, writing tests and updating docs, which locating code doesn't shorten.
 Within a task, turns still vary a lot between runs (P3 on c16: 23 to 38).
 
+## Bug fixes: the map against the map plus codefactory
+
+Five fix tasks (f21 to f25), each a one-line bug planted in options-scanner and described
+only by its symptom: a dropped `status=None` default one file away from the symptom, a
+case-sensitive symbol filter, a cache the Refresh route no longer clears, a CLI command
+wired to the wrong handler, and an off-by-one in a win rate. The repository's own tests
+miss all five; a hidden test grades each. The bug is folded into the tree's commit, so
+`git status` and `git diff` show nothing (`git show HEAD` would). The map and codefactory's
+index are rebuilt from the buggy code, as a real repository's would be. P3 against P5 on
+Opus, three runs per task, in `fix-tasks-2026-11-26.jsonl`.
+
+| | P3: the map | P5: plus codefactory |
+|---|---|---|
+| Correct | 15 of 15 | 14 of 15 |
+| Total cost | $6.74 | $6.95 |
+| Median cost ratio to P3 (95% interval over tasks) | 1 | 1.01 [0.95, 1.25] |
+| Median turns ratio | 1 | 0.90 [0.72, 1.25] |
+| Median searches ratio | 1 | 0.73 [0.55, 1.21] |
+
+The one miss judged a win by realized dollars rather than return. That is a valid fix, but
+the hidden test's fake trades had a 50% return with $0 realized. The hidden test now gives
+consistent figures; the run is reported as it was graded. On the wired-to-the-wrong-handler
+bug, codefactory's prefetch names the cause outright (the handler is never called, and the
+dispatch line points elsewhere), yet P5 took 8 to 13 turns against P3's 9 to 11: the map alone led there just as fast.
+With the map alone the agent already finds every bug, so there is no accuracy left to gain
+on these tasks. codefactory cuts searching by about a quarter, but not cost. One of P5's 15
+runs used a later prefetch (the hook was edited during the run); the other 14 used the
+version described above.
+
+## A large codebase: Django
+
+Django at `baa7a80` has 2,943 Python files and 1.15 million lines, about ten times
+options-scanner. It has no map plugin, so the map trees get the generic map, which for Django
+is a list of modules with their purposes. The facts about what a prompt names come from
+codefactory's prefetch. Every tree shares the same short instruction file. The tasks are in
+`tasks-django.json`: 10 wiring questions, 2 controls, 2 changes and 2 fixes with planted
+bugs, all with hidden tests that were checked to fail and pass as they should. Sonnet at
+low effort, one run per task, parallel runs. Results are in `django-four-way-2026-11-26.jsonl`;
+the rerun after two fixes is in `django-rerun-2026-11-26.jsonl`.
+
+| | A2: default | C2: CodeGraph | P4: map + codefactory | L4: lean | L5: lean, complete lists |
+|---|---|---|---|---|---|
+| Correct | 16 of 16 | 15 of 16 | 16 of 16 (rerun: 14) | 14 of 16 | 16 of 16 |
+| Total cost | $1.55 | $2.06 | $1.62 (rerun: $1.58) | $0.60 | $0.51 |
+| Wiring, median cost ratio to A2 (95% interval over tasks) | 1 | 1.28 [1.13, 1.44] | 1.02 [0.91, 1.06] | 0.23 [0.20, 0.30] | 0.24 [0.18, 0.34] |
+| Changes (2 tasks) | 1 | 1.27 [1.14, 1.39] | 1.23 [1.04, 1.42] | 0.70 [0.45, 0.96] | 0.52 [0.47, 0.57] |
+| Fixes (2 tasks) | 1 | 1.36 [1.21, 1.50] | 1.02 [1.01, 1.04] | 0.41 [0.38, 0.44] | 0.33 [0.31, 0.35] |
+
+L4 is P4 in the lean harness. Both its misses left one item out of a "which" list. L5 adds one
+sentence to its system prompt: "When asked which or what things do something, find every one
+before answering." The P4 rerun matches only identifiers and backticked words, not plain
+English. In the first run, "parallel" and "configured" from the prompt's test-command
+instructions pulled unrelated functions into the context. The rerun's ratios to A2 are 0.94
+[0.86, 1.04] for wiring, 1.18 [1.17, 1.20] for changes and 1.05 [0.85, 1.25] for fixes. Its
+two misses are the same list questions L4 missed (w02, w06).
+
+On the large codebase the harness is what pays. The lean setup costs a quarter of the
+default on questions and a third to a half on changes and fixes. With the completeness
+sentence it loses no accuracy. In the default harness, neither CodeGraph nor codefactory's
+prefetch lowers cost: CodeGraph adds about a quarter, and the prefetch is level on questions
+and fixes and above on the two changes. Two changes and two fixes are too few to say more
+about those kinds.
+
 ## Measurements outside the benchmark
 
 These come from the kit's own tools rather than from benchmark runs, so `benchmark/results/`

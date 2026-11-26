@@ -3,6 +3,7 @@
   "answers_frozen_from": "repomap.generate() and the source at repo_commit",
   "suffix_question": "Answer concisely. Do not change any files.",
   "suffix_change": "Make the change in this repository. Do not commit. Keep the project's own docs and checks consistent with the change. Run only the tests that cover what you changed (for example `python -m pytest tests/test_cli.py -q`), not the whole suite; `python` already has the project's dependencies.",
+  "suffix_fix": "Find the cause and fix it in this repository. Do not commit. Keep the project's own docs and checks consistent with the fix. Run only the tests that cover what you changed (for example `python -m pytest tests/test_cli.py -q`), not the whole suite; `python` already has the project's dependencies.",
   "tasks": [
     {"id": "w01", "kind": "wiring", "prompt": "Which modules write to the opportunity_log table, and which read it?",
      "required": [["storage/validation.py", "validation.py"], ["jobs/validate.py", "validate.py"]]},
@@ -43,6 +44,21 @@
     {"id": "k19", "kind": "control", "prompt": "How does the liquidity score treat a contract with no reported volume?",
      "required": [["renormali", "re-normali", "remaining weights", "dropped", "drops", "excluded", "skipped", "left out"]]},
     {"id": "k20", "kind": "control", "prompt": "What input does tickers.normalize_ticker reject, and how does it signal the rejection?",
-     "required": [["ValueError"], ["16", "length", "long"], ["whitespace", "space", "slash", "separator", "path"]]}
+     "required": [["ValueError"], ["16", "length", "long"], ["whitespace", "space", "slash", "separator", "path"]]},
+    {"id": "f21", "kind": "fix", "prompt": "`optscan forward-test` only lists positions that are still open. Trades I have closed never appear, so its summary always reports 0 closed.",
+     "hidden_test": "test_f21_forward_test_closed.py",
+     "bug": [{"file": "src/optscan/jobs/forward_test.py", "old": "held = store.list_positions(conn, status=None)", "new": "held = store.list_positions(conn)"}]},
+    {"id": "f22", "kind": "fix", "prompt": "In the dashboard's journal, filtering by symbol only works in capitals: `/api/journal?symbol=spy` returns no positions, while `symbol=SPY` returns them.",
+     "hidden_test": "test_f22_journal_symbol_case.py",
+     "bug": [{"file": "src/optscan/analytics/positions.py", "old": "out = [p for p in out if p.symbol == symbol.strip().upper()]", "new": "out = [p for p in out if p.symbol == symbol.strip()]"}]},
+    {"id": "f23", "kind": "fix", "prompt": "After I press Refresh on the dashboard, the open interest stays stale until I restart `optscan serve`, though quotes and candles do refresh.",
+     "hidden_test": "test_f23_refresh_open_interest.py",
+     "bug": [{"file": "src/optscan/api/deps.py", "old": "    _HISTORY.clear()\n    _OI_CHAINS.clear()\n", "new": "    _HISTORY.clear()\n"}]},
+    {"id": "f24", "kind": "fix", "prompt": "`optscan history` prints the broker ledger's realized trades instead of the coverage of the downloaded vendor history.",
+     "hidden_test": "test_f24_history_command.py",
+     "bug": [{"file": "src/optscan/cli.py", "old": "\"history\": _cmd_history,", "new": "\"history\": _cmd_trades,"}]},
+    {"id": "f25", "kind": "fix", "prompt": "`optscan forward-test` counts a trade that closed at exactly breakeven as a win in its win rate.",
+     "hidden_test": "test_f25_breakeven_not_a_win.py",
+     "bug": [{"file": "src/optscan/jobs/forward_test.py", "old": "for r in returns if r > 0)", "new": "for r in returns if r >= 0)"}]}
   ]
 }
