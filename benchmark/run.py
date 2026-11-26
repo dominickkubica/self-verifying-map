@@ -110,6 +110,20 @@ ARMS = {
         "tree": "mapp",
         "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
     },
+    # P4 (Sonnet, low) and P5 (Opus): P2 and P3 plus codefactory's change prefetch, a second prompt
+    # hook that hands the agent the definitions, callers, tests and doc mentions of what the prompt
+    # names, from an index built at setup. The instruction file is P2's, so only the hook differs.
+    "P4": {
+        "tree": "mappc",
+        "like": "P2",
+        "effort": "low",
+        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "sonnet"),
+    },
+    "P5": {
+        "tree": "mappc",
+        "like": "P3",
+        "models": dict.fromkeys(("wiring", "trap", "control", "change"), "opus"),
+    },
     "B": {"tree": "map"},
     "L": {"tree": "map", "lean": True},
     "S": {"tree": "slim", "lean": True},
@@ -351,8 +365,9 @@ def repo_interpreter(repo: Path) -> str:
     raise SystemExit(f"no venv or .venv in {repo}; pass --python with the repo's interpreter")
 
 
-def install_hooks(path: Path, python: str) -> None:
-    """The prefetch hook on every prompt, and a map regeneration when the agent stops."""
+def install_hooks(path: Path, python: str, codefactory: str | None = None) -> None:
+    """The prefetch hook on every prompt, and a map regeneration when the agent stops; with
+    `codefactory`, its change prefetch on every prompt too."""
     hooks = path / ".claude" / "hooks"
     hooks.mkdir(parents=True, exist_ok=True)
     shutil.copy(
@@ -370,7 +385,21 @@ def install_hooks(path: Path, python: str) -> None:
                         }
                     ]
                 }
-            ],
+            ]
+            + (
+                [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f'"{Path(codefactory).as_posix()}" prefetch --hook',
+                            }
+                        ]
+                    }
+                ]
+                if codefactory
+                else []
+            ),
             "Stop": [
                 {
                     "hooks": [
@@ -390,6 +419,7 @@ def setup(
     trees: set[str],
     python: str = "python",
     codegraph: str = "codegraph",
+    codefactory: str = "codefactory",
 ) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for tree in sorted(trees):
@@ -397,12 +427,17 @@ def setup(
         if path.exists():
             continue
         git(["worktree", "add", "--detach", str(path), commit], repo)
-        if (
-            tree == "mapp"
-        ):  # the full instruction file (no slimming) with the map, its prefetch rule and hooks
+        if tree in ("mapp", "mappc"):
+            # the full instruction file (no slimming) with the map, its prefetch rule and hooks
             replace_map_rule(path, PREFETCH_RULE)
-            install_hooks(path, python)
-            commit_tree(path, "benchmark tree: mapp")
+            install_hooks(path, python, codefactory if tree == "mappc" else None)
+            commit_tree(path, f"benchmark tree: {tree}")
+            if tree == "mappc":  # the index, untracked (ignored), so resets between runs keep it
+                done = subprocess.run(
+                    [codefactory, "prefetch", "."], cwd=path, capture_output=True, text=True
+                )
+                if done.returncode != 0:
+                    raise SystemExit(f"codefactory prefetch failed: {done.stderr[-1000:]}")
         if tree in ("slim", "slimg", "slimp"):
             slim_instructions(path)
             if tree == "slimg":
@@ -586,6 +621,9 @@ FIRST_RUN_ESTIMATE = {"change": 4.0, "question": 0.5}
 def run_estimate(rows: list[dict], arm: str, kind: str) -> float:
     """The most a run of this arm and kind has cost so far, or a cautious default."""
     seen = [r["cost_usd"] or 0 for r in rows if r["arm"] == arm and r["kind"] == kind]
+    like = ARMS.get(arm, {}).get("like")  # a new arm costs about what the arm it extends does
+    if not seen and like:
+        seen = [r["cost_usd"] or 0 for r in rows if r["arm"] == like and r["kind"] == kind]
     default = FIRST_RUN_ESTIMATE["change" if kind == "change" else "question"]
     return max(seen) if seen else default
 
@@ -728,6 +766,11 @@ def main(argv: list[str] | None = None) -> int:
         "--codegraph", default=shutil.which("codegraph") or "codegraph", help="For arm C."
     )
     parser.add_argument(
+        "--codefactory",
+        default=shutil.which("codefactory") or "codefactory",
+        help="For arms P4 and P5: a codefactory with the prefetch command.",
+    )
+    parser.add_argument(
         "--python",
         default=None,
         help="Interpreter with the repo's deps (default: the repo's venv or .venv).",
@@ -776,6 +819,7 @@ def main(argv: list[str] | None = None) -> int:
         {ARMS[a]["tree"] for a in arm_names},
         python,
         args.codegraph,
+        args.codefactory,
     )
     (args.out / "no-mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
     codegraph_server = {

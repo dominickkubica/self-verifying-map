@@ -12,6 +12,9 @@ All notable changes to `lean-agent-kit`. The format follows
   map, CodeGraph (installed and indexed the way its installer sets it up), and the map with
   its prefetch hook; on Sonnet at low effort (A2, C2, P2) and on Opus (A3, C3, P3). Results
   in `docs/results.md`.
+- Benchmark arms P4 (Sonnet, low effort) and P5 (Opus): the map plus codefactory's change
+  prefetch as a second prompt hook (`--codefactory`). A new arm's first cost estimate comes
+  from the arm it extends (`like`).
 
 ### Changed
 

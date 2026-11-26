@@ -186,6 +186,37 @@ in both. The large savings of the lean setup come from its harness and model, no
 default and CodeGraph on Opus against P on Sonnet, stopped because the arms differed in
 model; it is kept for the record and supports no comparison.
 
+## The map plus codefactory's change prefetch
+
+P4 (Sonnet, low effort) and P5 (Opus) are P2 and P3 plus a second prompt hook,
+[codefactory](https://github.com/dominickkubica/codefactory)'s `prefetch --hook`. For each
+function, command, route or module the prompt names, it adds the definition's file and
+line range, its callers and calls, the tests that exercise it, where the name appears as a
+string in code (an argparse command, a registry key) and the docs that mention it. It
+answers from an index built at setup, in about 0.2 seconds. The instruction file is P2's,
+so only the hook differs. The setup, the parallel runs and the prompts are those of the
+three-way table above. Results are in `codefactory-prefetch-2026-11-26.jsonl`.
+
+| | P2: the map | P4: plus prefetch | P3: the map | P5: plus prefetch |
+|---|---|---|---|---|
+| Model | Sonnet, low | Sonnet, low | Opus | Opus |
+| All 20 tasks, one run each: correct | 19 of 20 | 20 of 20 | 20 of 20 | 20 of 20 |
+| All 20 tasks, one run each: total cost | $2.05 | $1.97 | $5.59 | $4.98 |
+| Code changes, runs | 4 | 4 | 12 | 12 |
+| Code changes, total cost | $0.70 | $0.67 | $7.35 | $6.40 |
+| Code changes, median cost ratio to the map (95% interval over tasks) | 1 | 0.93 [0.76, 1.20] | 1 | 0.88 [0.68, 1.04] |
+| Code changes, median turns ratio | 1 | 0.89 [0.70, 1.67] | 1 | 0.84 [0.66, 1.54] |
+
+The Opus code-change rows are three runs of each of the four change tasks per arm; every
+other cell is one run per task. On questions P4's cost ratio to P2 is 1.00 [0.85, 1.02] for
+wiring, 0.89 [0.81, 0.97] for control and 0.92 [0.90, 1.26] for traps.
+
+The prefetch lowers the cost of code changes by about a tenth on both models, but every
+interval includes no change. The agents use what it supplies: their first calls read the
+exact line ranges it gives, rather than searching. Most of a change's turns come after
+that, in editing, writing tests and updating docs, which locating code doesn't shorten.
+Within a task, turns still vary a lot between runs (P3 on c16: 23 to 38).
+
 ## Measurements outside the benchmark
 
 These come from the kit's own tools rather than from benchmark runs, so `benchmark/results/`
